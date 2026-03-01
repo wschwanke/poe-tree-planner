@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { render } from '@/canvas/renderer'
+import { solveSteinerTree } from '@/data/solver'
 import { type NodeClickEvent, useCanvasInteraction } from '@/hooks/useCanvasInteraction'
 import { useSearch } from '@/hooks/useSearch'
 import type { SkillTreeContext } from '@/hooks/useSkillTree'
@@ -25,6 +26,7 @@ import { PlanningInfoPanel } from './PlanningInfoPanel'
 import { PoBExportDialog } from './PoBExportDialog'
 import { PointCounter } from './PointCounter'
 import { QuickSearch } from './QuickSearch'
+import { SettingsDialog } from './SettingsDialog'
 import { StatSummaryPanel } from './StatSummaryPanel'
 
 interface SkillTreeCanvasProps {
@@ -131,10 +133,18 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
           }
         }
 
+        // For unallocated cluster sockets, allocate then open dialog
+        const pn = merged.processedNodes.get(event.nodeId)
+        if (pn?.node.isJewelSocket && isClusterSocket(pn.node) && canAllocateNodes.has(event.nodeId)) {
+          handleNodeClick(event.nodeId)
+          openClusterDialog(event.nodeId)
+          return
+        }
+
         handleNodeClick(event.nodeId)
       }
     },
-    [planningActive, toggleFlag, handleNodeClick, allocatedNodes, merged.processedNodes, openClusterDialog],
+    [planningActive, toggleFlag, handleNodeClick, allocatedNodes, canAllocateNodes, merged.processedNodes, openClusterDialog],
   )
 
   // Clean up cluster configs when their sockets are unallocated
@@ -222,7 +232,7 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
     }
   }, [processedNodes, selectClass, selectedClass])
 
-  // Toggle planning mode with P key, undo with Ctrl+Z
+  // Keyboard shortcuts: P=planning, Escape=exit planning, Enter=solve/apply, Ctrl+Z=undo
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
@@ -237,10 +247,49 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
         usePlanningStore.getState().togglePlanningMode()
         dirtyRef.current = true
       }
+      if (e.key === 'Escape') {
+        const ps = usePlanningStore.getState()
+        if (ps.active) {
+          e.preventDefault()
+          ps.setPlanningMode(false)
+          dirtyRef.current = true
+        }
+      }
+      if (e.key === 'Enter') {
+        const ps = usePlanningStore.getState()
+        if (!ps.active) return
+        e.preventDefault()
+        if (ps.solverStatus === 'solved' && ps.solverPointCost > 0) {
+          // Apply the solved result
+          useTreeStore.getState().applyNodes(ps.solverPreview)
+          ps.clearFlags()
+          ps.setPlanningMode(false)
+        } else if (ps.requiredNodes.size > 0) {
+          // Solve
+          const ts = useTreeStore.getState()
+          if (!ts.classStartNodeId) return
+          const result = solveSteinerTree(
+            ts.classStartNodeId,
+            ps.requiredNodes,
+            ps.blockedNodes,
+            merged.adjacency,
+            ts.allocatedNodes,
+            merged.processedNodes,
+            ps.preferNotables,
+          )
+          if ('error' in result) {
+            ps.clearSolverPreview()
+            usePlanningStore.setState({ solverStatus: 'error', solverError: result.error })
+          } else {
+            ps.setSolverResult(result.nodes, result.cost)
+          }
+        }
+        dirtyRef.current = true
+      }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [dirtyRef])
+  }, [dirtyRef, merged.adjacency, merged.processedNodes])
 
   // Preload sprites when zoom level changes (not on every fractional zoom)
   const lastPreloadZoomRef = useRef<string>('')
@@ -420,6 +469,27 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
     closeClusterDialog()
   }, [clusterDialogSocketId, allocatedNodes, deallocateNodes, removeClusterJewel, closeClusterDialog])
 
+  const handleClusterUnallocate = useCallback(() => {
+    if (!clusterDialogSocketId) return
+    // Deallocate all virtual nodes first
+    const virtualIds = new Set<string>()
+    for (const id of allocatedNodes) {
+      if (id.startsWith(`cv:${clusterDialogSocketId}:`)) {
+        virtualIds.add(id)
+      }
+    }
+    if (virtualIds.size > 0) {
+      deallocateNodes(virtualIds)
+    }
+    // Remove cluster jewel config if any
+    if (clusterJewels.has(clusterDialogSocketId)) {
+      removeClusterJewel(clusterDialogSocketId)
+    }
+    // Unallocate the socket node itself
+    handleNodeClick(clusterDialogSocketId)
+    closeClusterDialog()
+  }, [clusterDialogSocketId, allocatedNodes, deallocateNodes, clusterJewels, removeClusterJewel, handleNodeClick, closeClusterDialog])
+
   return (
     <div className="relative w-full h-full overflow-hidden">
       <canvas
@@ -433,8 +503,8 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
         onContextMenu={interaction.handleContextMenu}
       />
 
-      {/* Top bar: class selector + point counter + search */}
-      <div className="absolute top-3 left-3 z-40 flex items-center gap-3">
+      {/* Top bar left: identity, actions, search */}
+      <div className="absolute top-3 left-3 z-40 flex items-center gap-2">
         <ClassSelector
           data={data}
           processedNodes={processedNodes}
@@ -443,16 +513,34 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
         />
         {selectedClass !== null && <PointCounter used={pointsUsed} total={totalPoints} />}
         {selectedClass !== null && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={undo}
-            disabled={!canUndo}
-            className="h-7 w-7 p-0 bg-stone-950/90 border-amber-900/50 text-stone-400 backdrop-blur-sm hover:bg-stone-900/90 hover:text-stone-200 disabled:opacity-30"
-            title="Undo (Ctrl+Z)"
-          >
-            <Undo2 className="w-3.5 h-3.5" />
-          </Button>
+          <>
+            <div className="w-px h-5 bg-stone-700/60" />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={undo}
+              disabled={!canUndo}
+              className="h-7 px-2 bg-stone-950/90 border-amber-900/50 text-stone-400 backdrop-blur-sm hover:bg-stone-900/90 hover:text-stone-200 disabled:opacity-30"
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+              <span className="text-xs ml-1">Undo</span>
+            </Button>
+            <Button
+              variant={planningActive ? 'default' : 'outline'}
+              size="sm"
+              onClick={togglePlanningMode}
+              className={
+                planningActive
+                  ? 'h-7 bg-cyan-800 hover:bg-cyan-700 text-cyan-100 border-cyan-600 text-xs'
+                  : 'h-7 bg-stone-950/90 border-amber-900/50 text-stone-300 backdrop-blur-sm text-xs hover:bg-stone-900/90'
+              }
+            >
+              {planningActive ? 'Planning' : 'Plan'}
+            </Button>
+            <BuildToolbar />
+            <div className="w-px h-5 bg-stone-700/60" />
+          </>
         )}
         <QuickSearch
           searchQuery={search.searchQuery}
@@ -460,21 +548,11 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
           onOpenCommandPalette={search.openCommandPalette}
           matchCount={search.matchCount}
         />
-        {selectedClass !== null && (
-          <Button
-            variant={planningActive ? 'default' : 'outline'}
-            size="sm"
-            onClick={togglePlanningMode}
-            className={
-              planningActive
-                ? 'h-7 bg-cyan-800 hover:bg-cyan-700 text-cyan-100 border-cyan-600 text-xs'
-                : 'h-7 bg-stone-950/90 border-amber-900/50 text-stone-300 backdrop-blur-sm text-xs hover:bg-stone-900/90'
-            }
-          >
-            {planningActive ? 'Planning' : 'Plan'}
-          </Button>
-        )}
-        {selectedClass !== null && <BuildToolbar />}
+      </div>
+
+      {/* Top bar right: settings, help */}
+      <div className="absolute top-3 right-3 z-40 flex items-center gap-2">
+        <SettingsDialog />
         <HelpMenu />
       </div>
 
@@ -496,6 +574,8 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
         currentConfig={clusterDialogCurrentConfig}
         onConfigure={handleClusterConfigure}
         onRemove={handleClusterRemove}
+        onUnallocate={handleClusterUnallocate}
+        onAllocateWithout={closeClusterDialog}
         onClose={closeClusterDialog}
       />
 
@@ -535,8 +615,6 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
             allocatedNodes={allocatedNodes}
             processedNodes={merged.processedNodes}
             selectedMasteryEffects={selectedMasteryEffects}
-            pointsUsed={pointsUsed}
-            totalPoints={totalPoints}
             onReset={reset}
           />
         )

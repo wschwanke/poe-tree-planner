@@ -1,10 +1,15 @@
-import { type SpatialIndex, buildSpatialIndex, getOrbitAngle } from '@/data/graph'
+import { buildSpatialIndex, getOrbitAngle, type SpatialIndex } from '@/data/graph'
 import type {
   ClusterGenerationResult,
   ClusterJewelConfig,
   ClusterJewelSize,
 } from '@/types/cluster-jewel'
-import { EXPANSION_SIZE_MAP, SUB_SOCKET_COUNTS } from '@/types/cluster-jewel'
+import {
+  CLUSTER_INDICES,
+  EXPANSION_SIZE_MAP,
+  SUB_SOCKET_COUNTS,
+  TOTAL_INDICES,
+} from '@/types/cluster-jewel'
 import type { ProcessedNode, SkillNode, SkillTreeData } from '@/types/skill-tree'
 
 /**
@@ -16,13 +21,82 @@ export function isClusterSocket(node: SkillNode): ClusterJewelSize | null {
   return EXPANSION_SIZE_MAP[node.expansionJewel.size] ?? null
 }
 
+// Hardcoded orbit index translation tables matching PoB's ClusterJewels.lua
+const TRANSLATE_12_TO_16 = [0, 1, 3, 4, 5, 7, 8, 9, 11, 12, 13, 15]
+const TRANSLATE_16_TO_12 = [0, 1, 1, 2, 3, 4, 4, 5, 6, 7, 7, 8, 9, 10, 10, 11]
+
+function translateOidx(idx: number, srcCount: number, destCount: number): number {
+  if (srcCount === destCount) return idx
+  if (srcCount === 12 && destCount === 16) return TRANSLATE_12_TO_16[idx]
+  if (srcCount === 16 && destCount === 12) return TRANSLATE_16_TO_12[idx]
+  return idx
+}
+
+/**
+ * Recursively resolve a virtual socket ID (cv: prefix) to its real tree data equivalent.
+ * Follows the chain of expansionJewel parent+index references until a real node is found.
+ */
+function resolveRealSocketId(
+  socketId: string,
+  data: SkillTreeData,
+  processedNodes: Map<string, ProcessedNode>,
+): string | undefined {
+  if (!socketId.startsWith('cv:')) return socketId
+
+  const pn = processedNodes.get(socketId)
+  if (!pn?.node.expansionJewel) return undefined
+
+  const parentId = String(pn.node.expansionJewel.parent)
+  const index = pn.node.expansionJewel.index
+
+  // Recursively resolve parent if it's also virtual
+  const realParentId = resolveRealSocketId(parentId, data, processedNodes)
+  if (!realParentId) return undefined
+
+  // Find the real node matching parent + index
+  for (const [nodeId, node] of Object.entries(data.nodes)) {
+    if (
+      node.expansionJewel &&
+      String(node.expansionJewel.parent) === realParentId &&
+      node.expansionJewel.index === index
+    ) {
+      return nodeId
+    }
+  }
+  return undefined
+}
+
+/**
+ * Find real sub-socket proxy references from the tree data.
+ * For a given socket ID, look up real nodes that have expansionJewel.parent matching it.
+ * Returns a Map from socket array index to the proxy ID that sub-socket should use.
+ */
+function findRealSubSocketProxies(
+  socketId: string,
+  data: SkillTreeData,
+  processedNodes: Map<string, ProcessedNode>,
+): Map<number, string> {
+  const realSocketId = resolveRealSocketId(socketId, data, processedNodes)
+  if (!realSocketId) return new Map()
+
+  const result = new Map<number, string>()
+  for (const [_nodeId, node] of Object.entries(data.nodes)) {
+    if (node.expansionJewel && String(node.expansionJewel.parent) === realSocketId) {
+      result.set(node.expansionJewel.index, String(node.expansionJewel.proxy))
+    }
+  }
+  return result
+}
+
 /**
  * Generate virtual nodes for a cluster jewel socketed at a given socket.
  *
- * Layout: Nodes are placed in a half-arc on the proxy's orbit, radiating outward
- * from the proxy position in both directions. The proxy serves as the entry point
- * that connects back to the socket via a straight line. Virtual nodes form two
- * arms extending from the proxy, with sub-sockets placed at the arm endpoints.
+ * Uses the PoB deterministic index-based layout system:
+ * 1. Sockets placed at fixed socketIndicies positions
+ * 2. Passives fill from smallIndicies, skipping socket-occupied slots
+ * 3. Positions computed via orbit index translation (12↔16 lookup tables)
+ * 4. Adjacency: walk cluster indices, link consecutive occupied nodes
+ *    (closed loop for medium/large, linear chain for small)
  */
 export function generateClusterNodes(
   socketId: string,
@@ -38,9 +112,7 @@ export function generateClusterNodes(
   if (!socketPn) return { virtualNodes, virtualAdjacency, subSocketIds }
 
   // For virtual sub-sockets (from parent clusters), expansionJewel is on the node itself
-  const rawNode = socketPn.node.expansionJewel
-    ? socketPn.node
-    : data.nodes[socketId]
+  const rawNode = socketPn.node.expansionJewel ? socketPn.node : data.nodes[socketId]
   if (!rawNode?.expansionJewel) return { virtualNodes, virtualAdjacency, subSocketIds }
 
   const proxyId = String(rawNode.expansionJewel.proxy)
@@ -52,143 +124,116 @@ export function generateClusterNodes(
 
   const orbit = proxyRaw.orbit
   const orbitRadius = data.constants.orbitRadii[orbit] ?? 0
-  const totalInOrbit = data.constants.skillsPerOrbit[orbit] ?? 1
-  const proxyOrbitIndex = proxyRaw.orbitIndex
-
-  // Find occupied orbit indices in this group (exclude the proxy itself)
-  const usedIndices = new Set<number>()
-  for (const existingNodeId of proxyGroup.nodes) {
-    const existing = data.nodes[existingNodeId]
-    if (existing && existing.orbit === orbit && existing.orbitIndex !== proxyOrbitIndex) {
-      usedIndices.add(existing.orbitIndex)
-    }
-  }
-
-  const passiveCount = config.passiveCount
+  const skillsPerOrbit = data.constants.skillsPerOrbit[orbit] ?? 1
+  const totalIndicies = TOTAL_INDICES[config.size]
+  const indices = CLUSTER_INDICES[config.size]
   const subSocketCount = SUB_SOCKET_COUNTS[config.size]
 
-  // Build two arms radiating from the proxy position.
-  // Arm 1 goes clockwise (increasing orbit index), arm 2 goes counter-clockwise.
-  const cwFree: number[] = [] // clockwise free positions from proxy
-  const ccwFree: number[] = [] // counter-clockwise free positions from proxy
+  // Translate proxy's tree orbit index into cluster index space
+  const proxyClusterIdx = translateOidx(proxyRaw.orbitIndex, skillsPerOrbit, totalIndicies)
 
-  for (let step = 1; step < totalInOrbit; step++) {
-    const cwIdx = (proxyOrbitIndex + step) % totalInOrbit
-    if (!usedIndices.has(cwIdx)) cwFree.push(cwIdx)
+  // Determine which cluster indices are occupied and what goes there.
+  // Map from cluster index → { virtualId, isSocket, socketArrayIndex }
+  const occupied = new Map<
+    number,
+    { virtualId: string; isSocket: boolean; socketArrayIndex: number }
+  >()
 
-    const ccwIdx = (proxyOrbitIndex - step + totalInOrbit) % totalInOrbit
-    if (!usedIndices.has(ccwIdx)) ccwFree.push(ccwIdx)
+  // Place sockets first at socketIndicies positions
+  const socketClusterIndices = new Set<number>()
+  const sortedSocketCis = [...indices.socketIndicies].sort((a, b) => a - b)
+  for (let i = 0; i < subSocketCount; i++) {
+    const ci = indices.socketIndicies[i]
+    socketClusterIndices.add(ci)
+    const realDataIndex = sortedSocketCis.indexOf(ci)
+    const virtualId = `cv:${socketId}:s${i}`
+    occupied.set(ci, { virtualId, isSocket: true, socketArrayIndex: realDataIndex })
+    subSocketIds.push(virtualId)
   }
 
-  // Distribute nodes across both arms, alternating to keep them balanced.
-  // The entry node goes at the proxy position. Remaining nodes split evenly.
-  // Total: 1 entry + (passiveCount - 1) arm nodes
-  const armNodeCount = passiveCount - 1
-  const cwCount = Math.ceil(armNodeCount / 2)
-  const ccwCount = armNodeCount - cwCount
-
-  const cwPositions = cwFree.slice(0, cwCount)
-  const ccwPositions = ccwFree.slice(0, ccwCount)
-
-  // Determine sub-socket placement: at the far ends of each arm
-  // Large: 2 sub-sockets (one at end of each arm)
-  // Medium: 1 sub-socket (at end of longer arm)
-  // Small: 0 sub-sockets
-  const subSocketPositionIndices = new Set<number>() // indices into the ordered node list
-  // We'll mark them after building the ordered position lists
-
-  // Build the ordered chain: ccw arm (reversed) → entry → cw arm
-  // This gives a continuous arc from one end through the proxy to the other
-  const orderedPositions: { orbitIndex: number; isEntry: boolean }[] = []
-
-  // CCW arm in reverse order (far to near)
-  for (let i = ccwPositions.length - 1; i >= 0; i--) {
-    orderedPositions.push({ orbitIndex: ccwPositions[i], isEntry: false })
-  }
-  // Entry node at proxy position
-  orderedPositions.push({ orbitIndex: proxyOrbitIndex, isEntry: true })
-  // CW arm (near to far)
-  for (const pos of cwPositions) {
-    orderedPositions.push({ orbitIndex: pos, isEntry: false })
+  // Fill passives from smallIndicies, skipping socket-occupied slots
+  let passivesPlaced = 0
+  let passiveIdx = 0
+  const totalPassives = config.passiveCount - subSocketCount // passiveCount includes sockets
+  for (const ci of indices.smallIndicies) {
+    if (passivesPlaced >= totalPassives) break
+    if (socketClusterIndices.has(ci)) continue
+    const virtualId = `cv:${socketId}:p${passiveIdx}`
+    occupied.set(ci, { virtualId, isSocket: false, socketArrayIndex: -1 })
+    passivesPlaced++
+    passiveIdx++
   }
 
-  // Mark sub-socket positions at the endpoints
-  if (subSocketCount >= 1 && orderedPositions.length > 0) {
-    subSocketPositionIndices.add(orderedPositions.length - 1) // end of CW arm
-  }
-  if (subSocketCount >= 2 && orderedPositions.length > 1) {
-    subSocketPositionIndices.add(0) // end of CCW arm
-  }
+  // Look up real sub-socket proxy references for nesting
+  const realSubSocketProxies = findRealSubSocketProxies(socketId, data, processedNodes)
 
-  // Generate virtual nodes
-  const nodeIds: string[] = []
-  let subSocketIdx = 0
-
-  for (let i = 0; i < orderedPositions.length; i++) {
-    const { orbitIndex } = orderedPositions[i]
-    const angle = getOrbitAngle(orbitIndex, totalInOrbit)
+  // Generate virtual nodes at computed world positions
+  for (const [ci, slot] of occupied) {
+    const rotatedIdx = (ci + proxyClusterIdx) % totalIndicies
+    const treeOidx = translateOidx(rotatedIdx, totalIndicies, skillsPerOrbit)
+    const angle = getOrbitAngle(treeOidx, skillsPerOrbit)
     const worldX = proxyGroup.x + orbitRadius * Math.sin(angle)
     const worldY = proxyGroup.y - orbitRadius * Math.cos(angle)
 
-    const isSubSocket = subSocketPositionIndices.has(i)
-    const virtualId = isSubSocket
-      ? `cv:${socketId}:s${subSocketIdx}`
-      : `cv:${socketId}:p${i}`
-
-    if (isSubSocket) {
-      subSocketIds.push(virtualId)
-      subSocketIdx++
+    // Determine sub-socket expansion jewel data for nesting
+    let expansionJewel: SkillNode['expansionJewel']
+    if (slot.isSocket) {
+      const subSize: ClusterJewelSize | undefined =
+        config.size === 'large' ? 'medium' : config.size === 'medium' ? 'small' : undefined
+      if (subSize) {
+        // Use real sub-socket proxy if available, otherwise fall back to parent proxy
+        const subProxy = realSubSocketProxies.get(slot.socketArrayIndex) ?? proxyId
+        expansionJewel = {
+          size: subSize === 'small' ? 0 : subSize === 'medium' ? 1 : 2,
+          index: slot.socketArrayIndex,
+          proxy: subProxy,
+          parent: socketId,
+        }
+      }
     }
-
-    // Determine the sub-socket's cluster size for nesting
-    const subSocketSize: ClusterJewelSize | undefined = isSubSocket
-      ? config.size === 'large'
-        ? 'medium'
-        : config.size === 'medium'
-          ? 'small'
-          : undefined
-      : undefined
 
     const node: SkillNode = {
-      name: isSubSocket ? 'Cluster Jewel Socket' : 'Cluster Passive',
+      name: slot.isSocket ? 'Cluster Jewel Socket' : 'Cluster Passive',
       group: proxyRaw.group,
       orbit,
-      orbitIndex,
+      orbitIndex: treeOidx,
       out: [],
       in: [],
-      isJewelSocket: isSubSocket ? true : undefined,
+      isJewelSocket: slot.isSocket ? true : undefined,
       isNotable: false,
-      expansionJewel: isSubSocket && subSocketSize
-        ? {
-            size: subSocketSize === 'small' ? 0 : subSocketSize === 'medium' ? 1 : 2,
-            index: subSocketIdx - 1,
-            proxy: proxyId,
-            parent: socketId,
-          }
-        : undefined,
+      expansionJewel,
     }
 
-    virtualNodes.set(virtualId, {
-      id: virtualId,
+    virtualNodes.set(slot.virtualId, {
+      id: slot.virtualId,
       node,
       worldX,
       worldY,
-      type: isSubSocket ? 'jewelSocket' : 'normal',
+      type: slot.isSocket ? 'jewelSocket' : 'normal',
     })
-
-    nodeIds.push(virtualId)
   }
 
-  // Build adjacency: continuous chain through the arc
-  for (let i = 0; i < nodeIds.length - 1; i++) {
-    addEdge(virtualAdjacency, nodeIds[i], nodeIds[i + 1])
+  // Build adjacency by walking cluster indices 0 → totalIndicies-1,
+  // linking consecutive occupied nodes
+  const orderedIds: string[] = []
+  for (let ci = 0; ci < totalIndicies; ci++) {
+    const slot = occupied.get(ci)
+    if (slot) orderedIds.push(slot.virtualId)
   }
 
-  // Connect the socket to the entry node (the one at the proxy position)
-  // The entry is in the middle of the chain
-  const entryIdx = orderedPositions.findIndex((p) => p.isEntry)
-  if (entryIdx >= 0 && nodeIds[entryIdx]) {
-    addEdge(virtualAdjacency, socketId, nodeIds[entryIdx])
+  for (let i = 0; i < orderedIds.length - 1; i++) {
+    addEdge(virtualAdjacency, orderedIds[i], orderedIds[i + 1])
+  }
+
+  // Close the loop for medium and large clusters
+  if (config.size !== 'small' && orderedIds.length > 1) {
+    addEdge(virtualAdjacency, orderedIds[orderedIds.length - 1], orderedIds[0])
+  }
+
+  // Link entrance node (cluster index 0) to parent socket
+  const entranceSlot = occupied.get(0)
+  if (entranceSlot) {
+    addEdge(virtualAdjacency, socketId, entranceSlot.virtualId)
   }
 
   return { virtualNodes, virtualAdjacency, subSocketIds }

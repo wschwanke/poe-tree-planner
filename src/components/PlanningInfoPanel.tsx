@@ -16,12 +16,10 @@ interface PlanningInfoPanelProps {
 export function PlanningInfoPanel({ adjacency, processedNodes }: PlanningInfoPanelProps) {
   const requiredNodes = usePlanningStore((s) => s.requiredNodes)
   const blockedNodes = usePlanningStore((s) => s.blockedNodes)
-  const preferNotables = usePlanningStore((s) => s.preferNotables)
   const solverStatus = usePlanningStore((s) => s.solverStatus)
   const solverPreview = usePlanningStore((s) => s.solverPreview)
   const solverPointCost = usePlanningStore((s) => s.solverPointCost)
   const solverError = usePlanningStore((s) => s.solverError)
-  const togglePreferNotables = usePlanningStore((s) => s.togglePreferNotables)
   const clearFlags = usePlanningStore((s) => s.clearFlags)
   const setSolverResult = usePlanningStore((s) => s.setSolverResult)
   const setPlanningMode = usePlanningStore((s) => s.setPlanningMode)
@@ -40,7 +38,7 @@ export function PlanningInfoPanel({ adjacency, processedNodes }: PlanningInfoPan
       adjacency,
       allocatedNodes,
       processedNodes,
-      preferNotables,
+      usePlanningStore.getState().preferNotables,
     )
 
     if ('error' in result) {
@@ -56,7 +54,6 @@ export function PlanningInfoPanel({ adjacency, processedNodes }: PlanningInfoPan
     adjacency,
     allocatedNodes,
     processedNodes,
-    preferNotables,
     setSolverResult,
   ])
 
@@ -106,17 +103,6 @@ export function PlanningInfoPanel({ adjacency, processedNodes }: PlanningInfoPan
               {blockedNodes.size} blocked
             </Badge>
           </div>
-
-          {/* Prefer notables checkbox */}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={preferNotables}
-              onChange={togglePreferNotables}
-              className="accent-cyan-500"
-            />
-            <span className="text-sm text-stone-300">Prefer notables in paths</span>
-          </label>
 
           {/* Solve button */}
           <Button

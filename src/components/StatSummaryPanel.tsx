@@ -1,4 +1,3 @@
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -10,8 +9,6 @@ interface StatSummaryPanelProps {
   allocatedNodes: Set<string>
   processedNodes: Map<string, ProcessedNode>
   selectedMasteryEffects: Map<string, number>
-  pointsUsed: number
-  totalPoints: number
   onReset: () => void
 }
 
@@ -19,8 +16,6 @@ export function StatSummaryPanel({
   allocatedNodes,
   processedNodes,
   selectedMasteryEffects,
-  pointsUsed,
-  totalPoints,
   onReset,
 }: StatSummaryPanelProps) {
   const { stats, masteryStats } = aggregateStats(
@@ -35,14 +30,7 @@ export function StatSummaryPanel({
     <div className="absolute top-0 right-0 z-40 h-full w-80 pointer-events-none">
       <Card className="m-4 h-[calc(100%-2rem)] gap-0 py-0 bg-stone-950/90 border-stone-800 backdrop-blur-sm pointer-events-auto">
         <CardHeader className="px-4 py-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm text-stone-300">Passive Stats</CardTitle>
-            <Badge variant="outline" className="border-amber-900/50">
-              <span className="text-amber-400 font-bold">{pointsUsed}</span>
-              <span className="text-stone-500 mx-0.5">/</span>
-              <span className="text-stone-400">{totalPoints}</span>
-            </Badge>
-          </div>
+          <CardTitle className="text-sm text-stone-300">Passive Stats</CardTitle>
         </CardHeader>
         <Separator className="bg-stone-800" />
         <ScrollArea className="flex-1 min-h-0">

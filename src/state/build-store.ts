@@ -47,7 +47,7 @@ interface BuildStore {
   setActiveBuild: (buildId: string | null) => void
 
   // Step CRUD
-  addStep: (buildId: string, name?: string) => void
+  addStep: (buildId: string, name?: string) => string | undefined
   deleteStep: (buildId: string, stepId: string) => void
   renameStep: (buildId: string, stepId: string, name: string) => void
   updateStepDescription: (buildId: string, stepId: string, description: string) => void
@@ -194,19 +194,39 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
   },
 
   addStep(buildId, name) {
-    const builds = updateBuild(get().builds, buildId, (b) => {
-      const stepName = name ?? `Step ${b.steps.length + 1}`
-      const lastStep = b.steps[b.steps.length - 1]
-      const step = createStep(
-        stepName,
-        lastStep?.classId ?? b.classId,
-        lastStep ? [...lastStep.allocatedNodeIds] : [],
-        lastStep ? { ...lastStep.masteryEffects } : {},
-      )
-      return { ...b, steps: [...b.steps, step], updatedAt: Date.now() }
-    })
+    const build = findBuild(get().builds, buildId)
+    if (!build) return undefined
+    const stepName = name ?? `Step ${build.steps.length + 1}`
+    const lastStep = build.steps[build.steps.length - 1]
+    const stepId = generateId()
+    const step: BuildStep = {
+      id: stepId,
+      name: stepName,
+      description: '',
+      classId: lastStep?.classId ?? build.classId,
+      ascendClassId: lastStep?.ascendClassId ?? 0,
+      allocatedNodeIds: lastStep ? [...lastStep.allocatedNodeIds] : [],
+      masteryEffects: lastStep ? { ...lastStep.masteryEffects } : {},
+    }
+    const builds = updateBuild(get().builds, buildId, (b) => ({
+      ...b,
+      steps: [...b.steps, step],
+      activeStepId: stepId,
+      updatedAt: Date.now(),
+    }))
     persist(builds)
-    set({ builds })
+    set({ builds, activeStepId: stepId })
+
+    // Load the new step into the tree
+    useTreeStore.getState().loadSnapshot({
+      classId: step.classId,
+      classStartNodeId: findClassStartNode(step.classId),
+      allocatedNodeIds: step.allocatedNodeIds,
+      masteryEffects: step.masteryEffects,
+      banditChoice: build.banditChoice,
+    })
+
+    return stepId
   },
 
   deleteStep(buildId, stepId) {

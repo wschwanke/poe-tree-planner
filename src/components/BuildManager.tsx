@@ -110,7 +110,6 @@ export function BuildManager() {
   const [selectedBuildId, setSelectedBuildId] = useState<string | null>(activeBuildId)
   const [creatingBuild, setCreatingBuild] = useState(false)
   const [renamingBuildId, setRenamingBuildId] = useState<string | null>(null)
-  const [creatingStep, setCreatingStep] = useState(false)
   const [renamingStepId, setRenamingStepId] = useState<string | null>(null)
 
   const selectedBuild = builds.find((b) => b.id === selectedBuildId) ?? null
@@ -119,6 +118,15 @@ export function BuildManager() {
     (name: string) => {
       createBuild(name)
       setCreatingBuild(false)
+      // Read the newly created build from the store and auto-rename its first step
+      const state = useBuildStore.getState()
+      const newBuild = state.builds[state.builds.length - 1]
+      if (newBuild) {
+        setSelectedBuildId(newBuild.id)
+        if (newBuild.steps[0]) {
+          setRenamingStepId(newBuild.steps[0].id)
+        }
+      }
     },
     [createBuild],
   )
@@ -143,9 +151,11 @@ export function BuildManager() {
   )
 
   const handleAddStep = useCallback(
-    (buildId: string, name: string) => {
-      addStep(buildId, name)
-      setCreatingStep(false)
+    (buildId: string) => {
+      const stepId = addStep(buildId)
+      if (stepId) {
+        setRenamingStepId(stepId)
+      }
     },
     [addStep],
   )
@@ -238,23 +248,15 @@ export function BuildManager() {
                   <h3 className="text-sm font-medium text-stone-200 truncate">
                     {selectedBuild.name}
                   </h3>
-                  {creatingStep ? (
-                    <InlineNameInput
-                      placeholder="Step name..."
-                      onSubmit={(name) => handleAddStep(selectedBuild.id, name)}
-                      onCancel={() => setCreatingStep(false)}
-                    />
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCreatingStep(true)}
-                      className="h-7 border-stone-700 hover:bg-stone-800 hover:text-stone-200"
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Add Step
-                    </Button>
-                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleAddStep(selectedBuild.id)}
+                    className="h-7 border-stone-700 hover:bg-stone-800 hover:text-stone-200"
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add Step
+                  </Button>
                 </div>
                 <ScrollArea className="flex-1 min-h-0 max-h-[50vh]">
                   <div className="space-y-2 pr-2">

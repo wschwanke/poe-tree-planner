@@ -57,6 +57,9 @@ export function NodeTooltip({
     masteryEffectIndex !== undefined ? node.node.masteryEffects?.[masteryEffectIndex] : null
   const isMastery = node.type === 'mastery'
   const effectCount = node.node.masteryEffects?.length ?? 0
+  const hasDescription = isMastery
+    ? selectedEffect !== null || effectCount > 0
+    : stats.length > 0 || reminderText.length > 0 || flavourText.length > 0
 
   return (
     <div className="absolute z-50 pointer-events-none" style={{ left: tooltipX, top: tooltipY }}>
@@ -82,84 +85,88 @@ export function NodeTooltip({
             <span className="text-xs text-stone-500">Click to configure cluster jewel</span>
           )}
         </CardHeader>
-        <Separator className="bg-stone-700" />
-        <CardContent className="px-4 py-3 space-y-1.5">
-          {isMastery && selectedEffect ? (
-            <>
-              {selectedEffect.stats.map((stat, i) => (
-                <p key={i} className="text-sm text-blue-300">
-                  {stat.split('\n').map((line, j) => (
-                    <span key={j}>
-                      {j > 0 && <br />}
-                      {line}
-                    </span>
-                  ))}
-                </p>
-              ))}
-              {selectedEffect.reminderText?.map((text, i) => (
-                <p key={`r-${i}`} className="text-xs text-stone-500 italic">
-                  {text}
-                </p>
-              ))}
-              <Separator className="bg-stone-800 my-1" />
-              <p className="text-xs text-stone-500 mb-1">Other choices:</p>
-              {node.node.masteryEffects
-                ?.filter((_, i) => i !== masteryEffectIndex)
-                .map((effect, i) => (
-                  <p key={`other-${i}`} className="text-xs text-stone-500">
-                    {effect.stats.join(', ')}
-                  </p>
-                ))}
-              <p className="text-xs text-stone-600 pt-1">Click to change effect</p>
-            </>
-          ) : isMastery && effectCount > 0 ? (
-            <>
-              <p className="text-xs text-stone-500 mb-1">Available effects:</p>
-              {node.node.masteryEffects?.map((effect, i) => (
-                <div key={i} className="mb-1.5">
-                  {effect.stats.map((stat, j) => (
-                    <p key={j} className="text-sm text-blue-300/80">
-                      {stat.split('\n').map((line, k) => (
-                        <span key={k}>
-                          {k > 0 && <br />}
+        {hasDescription && (
+          <>
+            <Separator className="bg-stone-700" />
+            <CardContent className="px-4 py-3 space-y-1.5">
+              {isMastery && selectedEffect ? (
+                <>
+                  {selectedEffect.stats.map((stat, i) => (
+                    <p key={i} className="text-sm text-blue-300">
+                      {stat.split('\n').map((line, j) => (
+                        <span key={j}>
+                          {j > 0 && <br />}
                           {line}
                         </span>
                       ))}
                     </p>
                   ))}
-                  {i < effectCount - 1 && <Separator className="bg-stone-800 mt-1.5" />}
-                </div>
-              ))}
-              {allocated && (
-                <p className="text-xs text-stone-600 pt-1">Click to choose an effect</p>
-              )}
-            </>
-          ) : (
-            <>
-              {stats.map((stat, i) => (
-                <p key={i} className="text-sm text-blue-300">
-                  {stat.split('\n').map((line, j) => (
-                    <span key={j}>
-                      {j > 0 && <br />}
-                      {line}
-                    </span>
+                  {selectedEffect.reminderText?.map((text, i) => (
+                    <p key={`r-${i}`} className="text-xs text-stone-500 italic">
+                      {text}
+                    </p>
                   ))}
-                </p>
-              ))}
-              {reminderText.map((text, i) => (
-                <p key={`r-${i}`} className="text-xs text-stone-500 italic">
-                  {text}
-                </p>
-              ))}
-              {flavourText.length > 0 && <Separator className="bg-stone-800 my-1" />}
-              {flavourText.map((text, i) => (
-                <p key={`f-${i}`} className="text-xs text-amber-400/70 italic">
-                  {text}
-                </p>
-              ))}
-            </>
-          )}
-        </CardContent>
+                  <Separator className="bg-stone-800 my-1" />
+                  <p className="text-xs text-stone-500 mb-1">Other choices:</p>
+                  {node.node.masteryEffects
+                    ?.filter((_, i) => i !== masteryEffectIndex)
+                    .map((effect, i) => (
+                      <p key={`other-${i}`} className="text-xs text-stone-500">
+                        {effect.stats.join(', ')}
+                      </p>
+                    ))}
+                  <p className="text-xs text-stone-600 pt-1">Click to change effect</p>
+                </>
+              ) : isMastery && effectCount > 0 ? (
+                <>
+                  <p className="text-xs text-stone-500 mb-1">Available effects:</p>
+                  {node.node.masteryEffects?.map((effect, i) => (
+                    <div key={i} className="mb-1.5">
+                      {effect.stats.map((stat, j) => (
+                        <p key={j} className="text-sm text-blue-300/80">
+                          {stat.split('\n').map((line, k) => (
+                            <span key={k}>
+                              {k > 0 && <br />}
+                              {line}
+                            </span>
+                          ))}
+                        </p>
+                      ))}
+                      {i < effectCount - 1 && <Separator className="bg-stone-800 mt-1.5" />}
+                    </div>
+                  ))}
+                  {allocated && (
+                    <p className="text-xs text-stone-600 pt-1">Click to choose an effect</p>
+                  )}
+                </>
+              ) : (
+                <>
+                  {stats.map((stat, i) => (
+                    <p key={i} className="text-sm text-blue-300">
+                      {stat.split('\n').map((line, j) => (
+                        <span key={j}>
+                          {j > 0 && <br />}
+                          {line}
+                        </span>
+                      ))}
+                    </p>
+                  ))}
+                  {reminderText.map((text, i) => (
+                    <p key={`r-${i}`} className="text-xs text-stone-500 italic">
+                      {text}
+                    </p>
+                  ))}
+                  {flavourText.length > 0 && <Separator className="bg-stone-800 my-1" />}
+                  {flavourText.map((text, i) => (
+                    <p key={`f-${i}`} className="text-xs text-amber-400/70 italic">
+                      {text}
+                    </p>
+                  ))}
+                </>
+              )}
+            </CardContent>
+          </>
+        )}
       </Card>
     </div>
   )

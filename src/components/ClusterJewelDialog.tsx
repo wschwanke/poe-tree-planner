@@ -25,6 +25,8 @@ interface ClusterJewelDialogProps {
   currentConfig: ClusterJewelConfig | null
   onConfigure: (config: ClusterJewelConfig) => void
   onRemove: () => void
+  onUnallocate: () => void
+  onAllocateWithout?: () => void
   onClose: () => void
 }
 
@@ -46,6 +48,8 @@ export function ClusterJewelDialog({
   currentConfig,
   onConfigure,
   onRemove,
+  onUnallocate,
+  onAllocateWithout,
   onClose,
 }: ClusterJewelDialogProps) {
   const [passiveCount, setPassiveCount] = useState<number | null>(null)
@@ -123,21 +127,39 @@ export function ClusterJewelDialog({
           >
             {currentConfig ? 'Update Jewel' : 'Socket Jewel'}
           </Button>
+
+          {!currentConfig && onAllocateWithout && (
+            <Button
+              variant="outline"
+              onClick={onAllocateWithout}
+              className="w-full border-stone-700 hover:bg-stone-800 text-stone-300"
+            >
+              Allocate Without Cluster Jewel
+            </Button>
+          )}
         </div>
 
-        {currentConfig && (
-          <>
-            <Separator className="bg-stone-800" />
+        <Separator className="bg-stone-800" />
+        <div className="space-y-2">
+          {currentConfig && (
             <Button
               variant="outline"
               size="sm"
               onClick={onRemove}
-              className="w-full border-stone-700 hover:bg-red-950/50 hover:border-red-800 hover:text-red-300"
+              className="w-full border-stone-700 hover:bg-stone-800 text-stone-300"
             >
-              Remove Jewel
+              Revert to Jewel Socket
             </Button>
-          </>
-        )}
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onUnallocate}
+            className="w-full border-stone-700 hover:bg-red-950/50 hover:border-red-800 hover:text-red-300"
+          >
+            Unallocate
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   )

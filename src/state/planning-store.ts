@@ -28,7 +28,7 @@ interface PlanningState {
 
 export const usePlanningStore = create<PlanningState>((set, get) => ({
   active: false,
-  preferNotables: false,
+  preferNotables: true,
 
   requiredNodes: new Set<string>(),
   blockedNodes: new Set<string>(),
@@ -123,7 +123,7 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
   reset() {
     set({
       active: false,
-      preferNotables: false,
+      preferNotables: true,
       requiredNodes: new Set<string>(),
 
       blockedNodes: new Set<string>(),
