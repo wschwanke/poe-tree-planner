@@ -1,13 +1,15 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowDown,
   ArrowUp,
+  Check,
   Copy,
   FileDown,
   Pencil,
   Plus,
   Save,
   Trash2,
+  X,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,10 +20,69 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { useBuildStore } from '@/state/build-store'
 import type { Build } from '@/types/build'
+
+function InlineNameInput({
+  initialValue,
+  placeholder,
+  onSubmit,
+  onCancel,
+}: {
+  initialValue?: string
+  placeholder: string
+  onSubmit: (value: string) => void
+  onCancel: () => void
+}) {
+  const [value, setValue] = useState(initialValue ?? '')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+
+  const handleSubmit = () => {
+    const trimmed = value.trim()
+    if (trimmed) onSubmit(trimmed)
+    else onCancel()
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <Input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') handleSubmit()
+          if (e.key === 'Escape') onCancel()
+        }}
+        placeholder={placeholder}
+        className="h-7 text-xs bg-stone-900 border-stone-700 text-stone-200 focus-visible:ring-amber-500/30 focus-visible:border-amber-500/50"
+      />
+      <Button
+        variant="ghost"
+        size="xs"
+        onClick={handleSubmit}
+        className="h-7 w-7 p-0 text-green-400 hover:text-green-300 shrink-0"
+      >
+        <Check className="w-3.5 h-3.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="xs"
+        onClick={onCancel}
+        className="h-7 w-7 p-0 text-stone-500 hover:text-stone-300 shrink-0"
+      >
+        <X className="w-3.5 h-3.5" />
+      </Button>
+    </div>
+  )
+}
 
 export function BuildManager() {
   const open = useBuildStore((s) => s.buildManagerOpen)
@@ -47,20 +108,25 @@ export function BuildManager() {
   const openPoBExport = useBuildStore((s) => s.openPoBExport)
 
   const [selectedBuildId, setSelectedBuildId] = useState<string | null>(activeBuildId)
+  const [creatingBuild, setCreatingBuild] = useState(false)
+  const [renamingBuildId, setRenamingBuildId] = useState<string | null>(null)
+  const [creatingStep, setCreatingStep] = useState(false)
+  const [renamingStepId, setRenamingStepId] = useState<string | null>(null)
 
   const selectedBuild = builds.find((b) => b.id === selectedBuildId) ?? null
 
-  const handleCreateBuild = useCallback(() => {
-    const name = prompt('Build name:')
-    if (!name?.trim()) return
-    createBuild(name.trim())
-  }, [createBuild])
+  const handleCreateBuild = useCallback(
+    (name: string) => {
+      createBuild(name)
+      setCreatingBuild(false)
+    },
+    [createBuild],
+  )
 
   const handleRenameBuild = useCallback(
-    (buildId: string, currentName: string) => {
-      const name = prompt('Rename build:', currentName)
-      if (!name?.trim()) return
-      renameBuild(buildId, name.trim())
+    (buildId: string, name: string) => {
+      renameBuild(buildId, name)
+      setRenamingBuildId(null)
     },
     [renameBuild],
   )
@@ -77,19 +143,17 @@ export function BuildManager() {
   )
 
   const handleAddStep = useCallback(
-    (buildId: string) => {
-      const name = prompt('Step name:')
-      if (!name?.trim()) return
-      addStep(buildId, name.trim())
+    (buildId: string, name: string) => {
+      addStep(buildId, name)
+      setCreatingStep(false)
     },
     [addStep],
   )
 
   const handleRenameStep = useCallback(
-    (buildId: string, stepId: string, currentName: string) => {
-      const name = prompt('Rename step:', currentName)
-      if (!name?.trim()) return
-      renameStep(buildId, stepId, name.trim())
+    (buildId: string, stepId: string, name: string) => {
+      renameStep(buildId, stepId, name)
+      setRenamingStepId(null)
     },
     [renameStep],
   )
@@ -116,15 +180,23 @@ export function BuildManager() {
         <div className="flex gap-4 flex-1 min-h-0">
           {/* Left: Builds list */}
           <div className="w-56 flex flex-col gap-2 shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCreateBuild}
-              className="w-full border-stone-700 hover:bg-stone-800 hover:text-stone-200"
-            >
-              <Plus className="w-3.5 h-3.5 mr-1.5" />
-              New Build
-            </Button>
+            {creatingBuild ? (
+              <InlineNameInput
+                placeholder="Build name..."
+                onSubmit={handleCreateBuild}
+                onCancel={() => setCreatingBuild(false)}
+              />
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCreatingBuild(true)}
+                className="w-full border-stone-700 hover:bg-stone-800 hover:text-stone-200"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                New Build
+              </Button>
+            )}
             <ScrollArea className="flex-1 min-h-0 max-h-[50vh]">
               <div className="space-y-1 pr-2">
                 {builds.length === 0 && (
@@ -138,8 +210,11 @@ export function BuildManager() {
                     build={build}
                     isSelected={build.id === selectedBuildId}
                     isActive={build.id === activeBuildId}
+                    isRenaming={build.id === renamingBuildId}
                     onSelect={() => setSelectedBuildId(build.id)}
-                    onRename={() => handleRenameBuild(build.id, build.name)}
+                    onStartRename={() => setRenamingBuildId(build.id)}
+                    onRename={(name) => handleRenameBuild(build.id, name)}
+                    onCancelRename={() => setRenamingBuildId(null)}
                     onDuplicate={() => duplicateBuild(build.id)}
                     onDelete={() => handleDeleteBuild(build.id)}
                     onActivate={() => {
@@ -163,15 +238,23 @@ export function BuildManager() {
                   <h3 className="text-sm font-medium text-stone-200 truncate">
                     {selectedBuild.name}
                   </h3>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleAddStep(selectedBuild.id)}
-                    className="h-7 border-stone-700 hover:bg-stone-800 hover:text-stone-200"
-                  >
-                    <Plus className="w-3 h-3 mr-1" />
-                    Add Step
-                  </Button>
+                  {creatingStep ? (
+                    <InlineNameInput
+                      placeholder="Step name..."
+                      onSubmit={(name) => handleAddStep(selectedBuild.id, name)}
+                      onCancel={() => setCreatingStep(false)}
+                    />
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCreatingStep(true)}
+                      className="h-7 border-stone-700 hover:bg-stone-800 hover:text-stone-200"
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Add Step
+                    </Button>
+                  )}
                 </div>
                 <ScrollArea className="flex-1 min-h-0 max-h-[50vh]">
                   <div className="space-y-2 pr-2">
@@ -185,9 +268,12 @@ export function BuildManager() {
                         isActiveStep={
                           selectedBuild.id === activeBuildId && step.id === activeStepId
                         }
-                        onRename={() =>
-                          handleRenameStep(selectedBuild.id, step.id, step.name)
+                        isRenaming={step.id === renamingStepId}
+                        onStartRename={() => setRenamingStepId(step.id)}
+                        onRename={(name) =>
+                          handleRenameStep(selectedBuild.id, step.id, name)
                         }
+                        onCancelRename={() => setRenamingStepId(null)}
                         onDelete={() => deleteStep(selectedBuild.id, step.id)}
                         onDuplicate={() => duplicateStep(selectedBuild.id, step.id)}
                         onMoveUp={() =>
@@ -228,8 +314,11 @@ interface BuildListItemProps {
   build: Build
   isSelected: boolean
   isActive: boolean
+  isRenaming: boolean
   onSelect: () => void
-  onRename: () => void
+  onStartRename: () => void
+  onRename: (name: string) => void
+  onCancelRename: () => void
   onDuplicate: () => void
   onDelete: () => void
   onActivate: () => void
@@ -240,8 +329,11 @@ function BuildListItem({
   build,
   isSelected,
   isActive,
+  isRenaming,
   onSelect,
+  onStartRename,
   onRename,
+  onCancelRename,
   onDuplicate,
   onDelete,
   onActivate,
@@ -260,19 +352,32 @@ function BuildListItem({
       }`}
     >
       <div className="flex items-center gap-1.5 mb-1">
-        <span className="text-sm text-stone-200 truncate flex-1">{build.name}</span>
-        {isActive && (
-          <Badge className="bg-green-700/50 text-green-300 text-[10px] px-1.5 py-0">
+        {isRenaming ? (
+          <div className="flex-1" onClick={(e) => e.stopPropagation()}>
+            <InlineNameInput
+              initialValue={build.name}
+              placeholder="Build name..."
+              onSubmit={onRename}
+              onCancel={onCancelRename}
+            />
+          </div>
+        ) : (
+          <span className="text-sm text-stone-200 truncate flex-1">{build.name}</span>
+        )}
+        {isActive && !isRenaming && (
+          <Badge variant="outline" className="border-green-700/50 text-green-300 text-[10px] px-1.5 py-0">
             Active
           </Badge>
         )}
       </div>
-      <div className="flex items-center gap-1 text-[10px] text-stone-500 mb-1.5">
-        <span>
-          {build.steps.length} step{build.steps.length !== 1 ? 's' : ''}
-        </span>
-      </div>
-      {isSelected && (
+      {!isRenaming && (
+        <div className="flex items-center gap-1 text-[10px] text-stone-500 mb-1.5">
+          <span>
+            {build.steps.length} step{build.steps.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+      )}
+      {isSelected && !isRenaming && (
         <div className="flex items-center gap-1 mt-1">
           <Button
             variant="ghost"
@@ -303,7 +408,7 @@ function BuildListItem({
             size="xs"
             onClick={(e) => {
               e.stopPropagation()
-              onRename()
+              onStartRename()
             }}
             className="h-6 w-6 p-0 text-stone-400 hover:text-stone-200"
             title="Rename"
@@ -346,7 +451,10 @@ interface StepCardProps {
   index: number
   totalSteps: number
   isActiveStep: boolean
-  onRename: () => void
+  isRenaming: boolean
+  onStartRename: () => void
+  onRename: (name: string) => void
+  onCancelRename: () => void
   onDelete: () => void
   onDuplicate: () => void
   onMoveUp: () => void
@@ -361,7 +469,10 @@ function StepCard({
   index,
   totalSteps,
   isActiveStep,
+  isRenaming,
+  onStartRename,
   onRename,
+  onCancelRename,
   onDelete,
   onDuplicate,
   onMoveUp,
@@ -370,8 +481,7 @@ function StepCard({
   onLoad,
   onDescriptionChange,
 }: StepCardProps) {
-  const [editing, setEditing] = useState(false)
-  const descRef = useRef<HTMLTextAreaElement>(null)
+  const [editingDesc, setEditingDesc] = useState(false)
 
   const nodeCount = step.allocatedNodeIds.length
   const pointCount = nodeCount > 0 ? nodeCount - 1 : 0
@@ -388,26 +498,36 @@ function StepCard({
         <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-stone-700 text-stone-500">
           {index + 1}
         </Badge>
-        <span className="text-sm font-medium text-stone-200 flex-1 truncate">{step.name}</span>
-        {isActiveStep && (
-          <Badge className="bg-green-700/50 text-green-300 text-[10px] px-1.5 py-0">
+        {isRenaming ? (
+          <div className="flex-1">
+            <InlineNameInput
+              initialValue={step.name}
+              placeholder="Step name..."
+              onSubmit={onRename}
+              onCancel={onCancelRename}
+            />
+          </div>
+        ) : (
+          <span className="text-sm font-medium text-stone-200 flex-1 truncate">{step.name}</span>
+        )}
+        {isActiveStep && !isRenaming && (
+          <Badge variant="outline" className="border-green-700/50 text-green-300 text-[10px] px-1.5 py-0">
             Active
           </Badge>
         )}
-        <span className="text-xs text-stone-500">{pointCount} pts</span>
+        {!isRenaming && <span className="text-xs text-stone-500">{pointCount} pts</span>}
       </div>
 
       {/* Description */}
-      {editing ? (
+      {editingDesc ? (
         <textarea
-          ref={descRef}
           defaultValue={step.description}
           onBlur={(e) => {
             onDescriptionChange(e.target.value)
-            setEditing(false)
+            setEditingDesc(false)
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') setEditing(false)
+            if (e.key === 'Escape') setEditingDesc(false)
           }}
           autoFocus
           rows={2}
@@ -417,7 +537,7 @@ function StepCard({
       ) : (
         <button
           type="button"
-          onClick={() => setEditing(true)}
+          onClick={() => setEditingDesc(true)}
           className="w-full text-left text-xs text-stone-500 hover:text-stone-400 mb-2 min-h-[20px]"
         >
           {step.description || 'Click to add notes...'}
@@ -465,7 +585,7 @@ function StepCard({
         <Button
           variant="ghost"
           size="xs"
-          onClick={onRename}
+          onClick={onStartRename}
           className="h-6 w-6 p-0 text-stone-500 hover:text-stone-200"
         >
           <Pencil className="w-3 h-3" />

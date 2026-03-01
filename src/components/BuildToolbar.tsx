@@ -1,6 +1,13 @@
 import { useCallback } from 'react'
 import { FolderOpen, Plus, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useBuildStore } from '@/state/build-store'
 
 export function BuildToolbar() {
@@ -25,6 +32,15 @@ export function BuildToolbar() {
       addStep(activeBuildId)
     }
   }, [activeBuildId, addStep])
+
+  const handleStepChange = useCallback(
+    (stepId: string) => {
+      if (activeBuild) {
+        loadStepToTree(activeBuild.id, stepId)
+      }
+    },
+    [activeBuild, loadStepToTree],
+  )
 
   if (!activeBuild) {
     return (
@@ -53,32 +69,31 @@ export function BuildToolbar() {
 
       <div className="w-px h-4 bg-stone-700" />
 
-      {/* Step tabs */}
-      <div className="flex items-center gap-0.5">
-        {activeBuild.steps.map((step) => (
-          <button
-            key={step.id}
-            type="button"
-            onClick={() => loadStepToTree(activeBuild.id, step.id)}
-            className={`text-xs px-2 py-0.5 rounded transition-colors ${
-              step.id === activeStepId
-                ? 'bg-amber-500/20 text-amber-300 font-medium'
-                : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/50'
-            }`}
-            title={step.name}
-          >
-            {step.name}
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={handleAddStep}
-          className="text-stone-500 hover:text-stone-300 px-1 py-0.5 rounded hover:bg-stone-800/50"
-          title="Add step"
+      <Select value={activeStepId ?? undefined} onValueChange={handleStepChange}>
+        <SelectTrigger
+          size="sm"
+          className="h-6 min-w-[80px] max-w-[140px] px-2 text-xs bg-transparent border-stone-700 text-stone-300"
         >
-          <Plus className="w-3 h-3" />
-        </button>
-      </div>
+          <SelectValue placeholder="Step..." />
+        </SelectTrigger>
+        <SelectContent className="bg-stone-950 border-stone-700">
+          {activeBuild.steps.map((step) => (
+            <SelectItem key={step.id} value={step.id} className="text-xs">
+              {step.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Button
+        variant="ghost"
+        size="xs"
+        onClick={handleAddStep}
+        className="h-5 w-5 p-0 text-stone-500 hover:text-stone-200"
+        title="Add step"
+      >
+        <Plus className="w-3 h-3" />
+      </Button>
 
       <div className="w-px h-4 bg-stone-700" />
 
