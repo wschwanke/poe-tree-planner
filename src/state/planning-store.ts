@@ -6,6 +6,7 @@ export type SolverStatus = 'idle' | 'solved' | 'error'
 
 interface PlanningState {
   active: boolean
+  preferNotables: boolean
 
   requiredNodes: Set<string>
   blockedNodes: Set<string>
@@ -18,6 +19,7 @@ interface PlanningState {
   togglePlanningMode: () => void
   setPlanningMode: (active: boolean) => void
   toggleFlag: (nodeId: string, flag: PlanningFlag) => void
+  togglePreferNotables: () => void
   clearFlags: () => void
   setSolverResult: (nodes: Set<string>, cost: number) => void
   clearSolverPreview: () => void
@@ -26,6 +28,7 @@ interface PlanningState {
 
 export const usePlanningStore = create<PlanningState>((set, get) => ({
   active: false,
+  preferNotables: false,
 
   requiredNodes: new Set<string>(),
   blockedNodes: new Set<string>(),
@@ -77,6 +80,16 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
     })
   },
 
+  togglePreferNotables() {
+    set((s) => ({
+      preferNotables: !s.preferNotables,
+      solverPreview: new Set<string>(),
+      solverStatus: 'idle' as const,
+      solverPointCost: 0,
+      solverError: null,
+    }))
+  },
+
   clearFlags() {
     set({
       requiredNodes: new Set<string>(),
@@ -110,6 +123,7 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
   reset() {
     set({
       active: false,
+      preferNotables: false,
       requiredNodes: new Set<string>(),
 
       blockedNodes: new Set<string>(),

@@ -39,6 +39,9 @@ export function buildProcessedNodes(data: SkillTreeData): Map<string, ProcessedN
   for (const [id, node] of Object.entries(nodes)) {
     // Skip ascendancy and bloodline nodes
     if (node.ascendancyName || node.isBloodline) continue
+    // Skip proxy nodes and cluster sub-sockets (they appear only as virtual nodes when a cluster jewel is configured)
+    if (node.isProxy) continue
+    if (node.expansionJewel?.parent) continue
 
     const group = groups[String(node.group)]
     if (!group) continue

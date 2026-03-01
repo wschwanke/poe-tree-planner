@@ -6,11 +6,16 @@
  * - Already-allocated nodes and previously connected nodes cost 0 to traverse
  * - Normal nodes cost 1
  *
+ * When preferNotables is enabled, uses Dijkstra with fractional weights
+ * (notable=0.9, normal=1.0) to steer paths through notables when cost is similar.
+ *
  * Tries connecting each required node first (different orderings),
  * then greedily connects the rest. Picks the ordering with lowest total cost.
  * This naturally handles path overlap — shared intermediate nodes are "free"
  * for subsequent terminals.
  */
+
+import type { ProcessedNode } from '@/types/skill-tree'
 
 export interface SolverResult {
   /** All node IDs in the optimal subtree (includes already-allocated nodes) */
@@ -86,6 +91,104 @@ function multiSourceBFS(
   return { dist, prev }
 }
 
+/** Minimal binary min-heap for Dijkstra */
+class MinHeap {
+  private heap: { key: string; priority: number }[] = []
+
+  get size() {
+    return this.heap.length
+  }
+
+  push(key: string, priority: number) {
+    this.heap.push({ key, priority })
+    this.bubbleUp(this.heap.length - 1)
+  }
+
+  pop(): { key: string; priority: number } | undefined {
+    if (this.heap.length === 0) return undefined
+    const top = this.heap[0]
+    const last = this.heap.pop()!
+    if (this.heap.length > 0) {
+      this.heap[0] = last
+      this.sinkDown(0)
+    }
+    return top
+  }
+
+  private bubbleUp(i: number) {
+    while (i > 0) {
+      const parent = (i - 1) >> 1
+      if (this.heap[parent].priority <= this.heap[i].priority) break
+      ;[this.heap[parent], this.heap[i]] = [this.heap[i], this.heap[parent]]
+      i = parent
+    }
+  }
+
+  private sinkDown(i: number) {
+    const n = this.heap.length
+    while (true) {
+      let smallest = i
+      const left = 2 * i + 1
+      const right = 2 * i + 2
+      if (left < n && this.heap[left].priority < this.heap[smallest].priority) smallest = left
+      if (right < n && this.heap[right].priority < this.heap[smallest].priority) smallest = right
+      if (smallest === i) break
+      ;[this.heap[smallest], this.heap[i]] = [this.heap[i], this.heap[smallest]]
+      i = smallest
+    }
+  }
+}
+
+/**
+ * Multi-source Dijkstra from all nodes in `tree`.
+ * Nodes in `tree` cost 0, notables cost 0.9, normal nodes cost 1.0.
+ * This steers paths through notables when routes have similar node count.
+ */
+function multiSourceDijkstra(
+  tree: Set<string>,
+  adjacency: Map<string, Set<string>>,
+  processedNodes: Map<string, ProcessedNode>,
+): BFSResult {
+  const dist = new Map<string, number>()
+  const prev = new Map<string, string>()
+  const heap = new MinHeap()
+
+  for (const node of tree) {
+    dist.set(node, 0)
+    heap.push(node, 0)
+  }
+
+  while (heap.size > 0) {
+    const { key: current, priority: currentDist } = heap.pop()!
+
+    // Skip stale entries
+    if (currentDist > (dist.get(current) ?? Infinity)) continue
+
+    const neighbors = adjacency.get(current)
+    if (!neighbors) continue
+
+    for (const neighbor of neighbors) {
+      let weight: number
+      if (tree.has(neighbor)) {
+        weight = 0
+      } else {
+        const pn = processedNodes.get(neighbor)
+        weight = pn?.type === 'notable' ? 0.9 : 1.0
+      }
+      const newDist = currentDist + weight
+      const oldDist = dist.get(neighbor)
+
+      if (oldDist === undefined || newDist < oldDist) {
+        dist.set(neighbor, newDist)
+        prev.set(neighbor, current)
+        heap.push(neighbor, newDist)
+      }
+    }
+  }
+
+  return { dist, prev }
+}
+
 /**
  * Collect the new (non-tree) nodes on the path from `target` back to the tree.
  */
@@ -115,12 +218,17 @@ function growTree(
   requiredNodes: Set<string>,
   initialTree: Set<string>,
   adjacency: Map<string, Set<string>>,
+  processedNodes?: Map<string, ProcessedNode>,
+  preferNotables?: boolean,
 ): { tree: Set<string>; cost: number } | null {
   const tree = new Set(initialTree)
   const unreached = new Set(requiredNodes)
+  const search = preferNotables && processedNodes
+    ? () => multiSourceDijkstra(tree, adjacency, processedNodes)
+    : () => multiSourceBFS(tree, adjacency)
 
   // Connect first terminal
-  const bfs1 = multiSourceBFS(tree, adjacency)
+  const bfs1 = search()
   if (!bfs1.dist.has(firstTerminal) || bfs1.dist.get(firstTerminal) === undefined) {
     return null
   }
@@ -130,7 +238,7 @@ function growTree(
 
   // Greedy: connect nearest remaining terminal
   while (unreached.size > 0) {
-    const bfs = multiSourceBFS(tree, adjacency)
+    const bfs = search()
 
     let nearestTerminal = ''
     let nearestDist = Infinity
@@ -149,7 +257,7 @@ function growTree(
     unreached.delete(nearestTerminal)
   }
 
-  // Calculate cost: nodes in tree that weren't in the initial tree
+  // Calculate cost: integer node count (not fractional weights)
   let cost = 0
   for (const n of tree) {
     if (!initialTree.has(n)) cost++
@@ -164,6 +272,8 @@ export function solveSteinerTree(
   blockedNodes: Set<string>,
   adjacency: Map<string, Set<string>>,
   allocatedNodes: Set<string>,
+  processedNodes?: Map<string, ProcessedNode>,
+  preferNotables?: boolean,
 ): SolverResult | { error: string } {
   if (requiredNodes.size === 0) {
     return { nodes: new Set<string>(), cost: 0 }
@@ -189,7 +299,14 @@ export function solveSteinerTree(
   let bestCost = Infinity
 
   for (const firstTerminal of requiredNodes) {
-    const result = growTree(firstTerminal, requiredNodes, initialTree, filteredAdj)
+    const result = growTree(
+      firstTerminal,
+      requiredNodes,
+      initialTree,
+      filteredAdj,
+      processedNodes,
+      preferNotables,
+    )
     if (result && result.cost < bestCost) {
       bestCost = result.cost
       bestResult = result.tree

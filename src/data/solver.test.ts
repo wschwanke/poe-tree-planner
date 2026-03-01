@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { solveSteinerTree } from './solver'
+import type { ProcessedNode } from '@/types/skill-tree'
 
 /** Helper to build a bidirectional adjacency map from edge pairs */
 function buildAdj(edges: [string, string][]): Map<string, Set<string>> {
@@ -343,6 +344,98 @@ describe('solveSteinerTree', () => {
       new Set(['S']),
     )
     expect('error' in result).toBe(true)
+  })
+
+  it('preferNotables: chooses path through notable when two equal-cost paths exist', () => {
+    // Two paths from S to T, both 3 hops:
+    //   S - A - B - T  (A is notable)
+    //   S - X - Y - T  (all normal)
+    //
+    // Without preferNotables: either path is fine (cost 3)
+    // With preferNotables: should prefer S-A-B-T because A is notable (lower weight)
+    const adj = buildAdj([
+      ['S', 'A'],
+      ['A', 'B'],
+      ['B', 'T'],
+      ['S', 'X'],
+      ['X', 'Y'],
+      ['Y', 'T'],
+    ])
+
+    const processedNodes = new Map<string, ProcessedNode>()
+    for (const id of ['S', 'A', 'B', 'T', 'X', 'Y']) {
+      processedNodes.set(id, {
+        id,
+        node: { name: id } as ProcessedNode['node'],
+        worldX: 0,
+        worldY: 0,
+        type: id === 'A' ? 'notable' : 'normal',
+        spriteCoords: null as unknown as ProcessedNode['spriteCoords'],
+        radius: 10,
+      })
+    }
+
+    const result = solveSteinerTree(
+      'S',
+      new Set(['T']),
+      new Set(),
+      adj,
+      new Set(['S']),
+      processedNodes,
+      true,
+    )
+    expect('error' in result).toBe(false)
+    if (!('error' in result)) {
+      expect(result.cost).toBe(3)
+      // Should go through the notable node A
+      expect(result.nodes.has('A')).toBe(true)
+      expect(result.nodes.has('B')).toBe(true)
+      // Should NOT go through X, Y
+      expect(result.nodes.has('X')).toBe(false)
+      expect(result.nodes.has('Y')).toBe(false)
+    }
+  })
+
+  it('preferNotables: does not increase cost to reach notables', () => {
+    // Notable is on a longer path — should still pick the shorter path
+    //   S - A - T       (2 hops, all normal)
+    //   S - X - Y - T   (3 hops, X is notable)
+    //
+    // Even with preferNotables, the 2-hop path should win
+    const adj = buildAdj([
+      ['S', 'A'],
+      ['A', 'T'],
+      ['S', 'X'],
+      ['X', 'Y'],
+      ['Y', 'T'],
+    ])
+
+    const processedNodes = new Map<string, ProcessedNode>()
+    for (const id of ['S', 'A', 'T', 'X', 'Y']) {
+      processedNodes.set(id, {
+        id,
+        node: { name: id } as ProcessedNode['node'],
+        worldX: 0,
+        worldY: 0,
+        type: id === 'X' ? 'notable' : 'normal',
+        spriteCoords: null as unknown as ProcessedNode['spriteCoords'],
+        radius: 10,
+      })
+    }
+
+    const result = solveSteinerTree(
+      'S',
+      new Set(['T']),
+      new Set(),
+      adj,
+      new Set(['S']),
+      processedNodes,
+      true,
+    )
+    expect('error' in result).toBe(false)
+    if (!('error' in result)) {
+      expect(result.cost).toBe(2)
+    }
   })
 
   it('performance: handles larger graph with many terminals', () => {

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { Undo2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { render } from '@/canvas/renderer'
 import { type NodeClickEvent, useCanvasInteraction } from '@/hooks/useCanvasInteraction'
 import { useSearch } from '@/hooks/useSearch'
@@ -19,7 +21,7 @@ import { HelpMenu } from './HelpMenu'
 import { CommandPalette } from './CommandPalette'
 import { MasterySelectionDialog } from './MasterySelectionDialog'
 import { NodeTooltip } from './NodeTooltip'
-import { PlanningToolbar } from './PlanningToolbar'
+import { PlanningInfoPanel } from './PlanningInfoPanel'
 import { PoBExportDialog } from './PoBExportDialog'
 import { PointCounter } from './PointCounter'
 import { QuickSearch } from './QuickSearch'
@@ -105,8 +107,11 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
   const handleMasteryUnallocate = useTreeStore((s) => s.handleMasteryUnallocate)
   const closeMasteryDialog = useTreeStore((s) => s.closeMasteryDialog)
   const deallocateNodes = useTreeStore((s) => s.deallocateNodes)
+  const undo = useTreeStore((s) => s.undo)
+  const canUndo = useTreeStore((s) => s.canUndo)
 
   const planningActive = usePlanningStore((s) => s.active)
+  const togglePlanningMode = usePlanningStore((s) => s.togglePlanningMode)
   const toggleFlag = usePlanningStore((s) => s.toggleFlag)
 
   const handleCanvasNodeClick = useCallback(
@@ -217,9 +222,15 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
     }
   }, [processedNodes, selectClass, selectedClass])
 
-  // Toggle planning mode with P key
+  // Toggle planning mode with P key, undo with Ctrl+Z
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault()
+        useTreeStore.getState().undo()
+        dirtyRef.current = true
+        return
+      }
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       if (e.key === 'p' || e.key === 'P') {
         e.preventDefault()
@@ -431,6 +442,18 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
           onSelect={handleClassSelect}
         />
         {selectedClass !== null && <PointCounter used={pointsUsed} total={totalPoints} />}
+        {selectedClass !== null && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={undo}
+            disabled={!canUndo}
+            className="h-7 w-7 p-0 bg-stone-950/90 border-amber-900/50 text-stone-400 backdrop-blur-sm hover:bg-stone-900/90 hover:text-stone-200 disabled:opacity-30"
+            title="Undo (Ctrl+Z)"
+          >
+            <Undo2 className="w-3.5 h-3.5" />
+          </Button>
+        )}
         <QuickSearch
           searchQuery={search.searchQuery}
           onSearchChange={search.setSearchQuery}
@@ -438,10 +461,18 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
           matchCount={search.matchCount}
         />
         {selectedClass !== null && (
-          <PlanningToolbar
-            adjacency={adjacency}
-            processedNodes={processedNodes}
-          />
+          <Button
+            variant={planningActive ? 'default' : 'outline'}
+            size="sm"
+            onClick={togglePlanningMode}
+            className={
+              planningActive
+                ? 'h-7 bg-cyan-800 hover:bg-cyan-700 text-cyan-100 border-cyan-600 text-xs'
+                : 'h-7 bg-stone-950/90 border-amber-900/50 text-stone-300 backdrop-blur-sm text-xs hover:bg-stone-900/90'
+            }
+          >
+            {planningActive ? 'Planning' : 'Plan'}
+          </Button>
         )}
         {selectedClass !== null && <BuildToolbar />}
         <HelpMenu />
@@ -492,16 +523,23 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
         </div>
       )}
 
-      {/* Stat summary panel */}
+      {/* Right side panel: planning or stats */}
       {selectedClass !== null && (
-        <StatSummaryPanel
-          allocatedNodes={allocatedNodes}
-          processedNodes={merged.processedNodes}
-          selectedMasteryEffects={selectedMasteryEffects}
-          pointsUsed={pointsUsed}
-          totalPoints={totalPoints}
-          onReset={reset}
-        />
+        planningActive ? (
+          <PlanningInfoPanel
+            adjacency={merged.adjacency}
+            processedNodes={merged.processedNodes}
+          />
+        ) : (
+          <StatSummaryPanel
+            allocatedNodes={allocatedNodes}
+            processedNodes={merged.processedNodes}
+            selectedMasteryEffects={selectedMasteryEffects}
+            pointsUsed={pointsUsed}
+            totalPoints={totalPoints}
+            onReset={reset}
+          />
+        )
       )}
 
       {/* Build management */}
