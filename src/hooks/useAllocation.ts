@@ -117,6 +117,43 @@ export function useAllocation(
     setMasteryDialogNodeId(null)
   }, [])
 
+  // Compute the path that would be allocated if the hovered node were clicked
+  const hoveredPath = useMemo(() => {
+    if (!state.hoveredNodeId || !adjacency || !processedNodes) return []
+    if (state.allocatedNodes.has(state.hoveredNodeId)) return []
+    const pn = processedNodes.get(state.hoveredNodeId)
+    if (!pn || pn.node.isProxy) return []
+
+    // For mastery nodes, find the path to the nearest group notable
+    if (pn.node.isMastery) {
+      const groupId = pn.node.group
+      // Check if already has a notable allocated
+      for (const allocId of state.allocatedNodes) {
+        const allocPn = processedNodes.get(allocId)
+        if (allocPn && allocPn.node.group === groupId && allocPn.node.isNotable) return []
+      }
+      const groupNotables: string[] = []
+      for (const [nid, npn] of processedNodes) {
+        if (npn.node.group === groupId && npn.node.isNotable) groupNotables.push(nid)
+      }
+      let bestPath: string[] | null = null
+      for (const notableId of groupNotables) {
+        const path = findShortestPath(notableId, notableId, adjacency, state.allocatedNodes)
+        if (path && (!bestPath || path.length < bestPath.length)) bestPath = path
+      }
+      return bestPath ?? []
+    }
+
+    if (canAllocateNodes.has(state.hoveredNodeId)) return [state.hoveredNodeId]
+    const path = findShortestPath(
+      state.hoveredNodeId,
+      state.hoveredNodeId,
+      adjacency,
+      state.allocatedNodes,
+    )
+    return path ?? []
+  }, [state.hoveredNodeId, state.allocatedNodes, adjacency, processedNodes, canAllocateNodes])
+
   const setHovered = useCallback((nodeId: string | null) => {
     dispatch({ type: 'SET_HOVERED', nodeId })
   }, [])
@@ -129,6 +166,7 @@ export function useAllocation(
     state,
     canAllocateNodes,
     pointsUsed,
+    hoveredPath,
     selectClass,
     handleNodeClick,
     setHovered,

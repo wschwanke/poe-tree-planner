@@ -28,6 +28,7 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
     handleNodeClick,
     setHovered,
     reset,
+    hoveredPath,
     masteryDialogNodeId,
     handleMasterySelect,
     handleMasteryUnallocate,
@@ -104,13 +105,24 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
         allocatedNodes: state.allocatedNodes,
         canAllocateNodes,
         hoveredNodeId: state.hoveredNodeId,
+        hoveredPath,
       })
       animId = requestAnimationFrame(frame)
     }
     animId = requestAnimationFrame(frame)
 
     return () => cancelAnimationFrame(animId)
-  }, [viewport, data, processedNodes, adjacency, spatialIndex, sprites, state, canAllocateNodes])
+  }, [
+    viewport,
+    data,
+    processedNodes,
+    adjacency,
+    spatialIndex,
+    sprites,
+    state,
+    canAllocateNodes,
+    hoveredPath,
+  ])
 
   const hoveredNode = state.hoveredNodeId ? processedNodes.get(state.hoveredNodeId) : null
 
@@ -163,6 +175,7 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
             viewport={viewport}
             allocated={state.allocatedNodes.has(hoveredNode.id)}
             selectedMasteryEffects={state.selectedMasteryEffects}
+            classes={data.classes}
           />
         </div>
       )}

@@ -63,6 +63,7 @@ export function renderConnections(
   viewport: ViewportState,
   allocatedNodes: Set<string>,
   data: SkillTreeData,
+  hoveredPath: string[] = [],
 ): void {
   const rendered = new Set<string>()
 
@@ -197,4 +198,100 @@ export function renderConnections(
     ctx.stroke()
     ctx.restore()
   }
+
+  // Draw hovered path preview: show the path that would be allocated
+  if (hoveredPath.length < 2) return
+
+  // Build set of edges in the hovered path for quick lookup
+  const pathEdges = new Set<string>()
+  for (let i = 0; i < hoveredPath.length - 1; i++) {
+    const a = hoveredPath[i]
+    const b = hoveredPath[i + 1]
+    // Also check adjacency to find the actual connected pairs
+    const neighbors = adjacency.get(a)
+    if (neighbors?.has(b)) {
+      pathEdges.add(a < b ? `${a}-${b}` : `${b}-${a}`)
+    }
+  }
+
+  // If the path nodes aren't directly consecutive in adjacency, find edges along the path
+  // by checking all pairs of adjacent path nodes
+  const pathSet = new Set(hoveredPath)
+  for (const nodeId of hoveredPath) {
+    const neighbors = adjacency.get(nodeId)
+    if (!neighbors) continue
+    for (const neighborId of neighbors) {
+      if (pathSet.has(neighborId)) {
+        pathEdges.add(nodeId < neighborId ? `${nodeId}-${neighborId}` : `${neighborId}-${nodeId}`)
+      }
+    }
+  }
+
+  const previewSegments: Segment[] = []
+  for (const edgeKey of pathEdges) {
+    const [idA, idB] = edgeKey.split('-')
+    const nodeA = processedNodes.get(idA)
+    const nodeB = processedNodes.get(idB)
+    if (!nodeA || !nodeB) continue
+
+    // Check for same-orbit arc
+    if (
+      nodeA.node.group === nodeB.node.group &&
+      nodeA.node.orbit === nodeB.node.orbit &&
+      nodeA.node.orbit > 0
+    ) {
+      const group = data.groups[String(nodeA.node.group)]
+      if (group) {
+        const orbit = nodeA.node.orbit
+        const orbitRadius = data.constants.orbitRadii[orbit] ?? 0
+        const totalInOrbit = data.constants.skillsPerOrbit[orbit] ?? 1
+        const angleA = getOrbitAngle(nodeA.node.orbitIndex, totalInOrbit)
+        const angleB = getOrbitAngle(nodeB.node.orbitIndex, totalInOrbit)
+        const canvasAngleA = angleA - Math.PI / 2
+        const canvasAngleB = angleB - Math.PI / 2
+        let diff = canvasAngleB - canvasAngleA
+        while (diff > Math.PI) diff -= 2 * Math.PI
+        while (diff < -Math.PI) diff += 2 * Math.PI
+        const [gcx, gcy] = worldToScreen(group.x, group.y, viewport)
+        previewSegments.push({
+          type: 'arc',
+          cx: gcx,
+          cy: gcy,
+          radius: orbitRadius * viewport.zoom,
+          startAngle: canvasAngleA,
+          endAngle: canvasAngleB,
+          counterclockwise: diff < 0,
+        })
+        continue
+      }
+    }
+
+    const [sx1, sy1] = worldToScreen(nodeA.worldX, nodeA.worldY, viewport)
+    const [sx2, sy2] = worldToScreen(nodeB.worldX, nodeB.worldY, viewport)
+    previewSegments.push({ type: 'line', x1: sx1, y1: sy1, x2: sx2, y2: sy2 })
+  }
+
+  if (previewSegments.length === 0) return
+
+  const activeStyle = CONNECTION_STYLES.active
+  const previewWidth = Math.max(activeStyle.minWidth, activeStyle.widthMultiplier * viewport.zoom)
+
+  ctx.save()
+  ctx.strokeStyle = activeStyle.color
+  ctx.globalAlpha = 0.33
+  ctx.lineWidth = previewWidth
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  for (const seg of previewSegments) {
+    if (seg.type === 'line') {
+      ctx.moveTo(seg.x1, seg.y1)
+      ctx.lineTo(seg.x2, seg.y2)
+    } else {
+      const { cx, cy, radius, startAngle, endAngle, counterclockwise } = seg
+      ctx.moveTo(cx + radius * Math.cos(startAngle), cy + radius * Math.sin(startAngle))
+      ctx.arc(cx, cy, radius, startAngle, endAngle, counterclockwise)
+    }
+  }
+  ctx.stroke()
+  ctx.restore()
 }

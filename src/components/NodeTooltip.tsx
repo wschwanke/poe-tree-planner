@@ -2,13 +2,14 @@ import { worldToScreen } from '@/canvas/viewport'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
-import type { ProcessedNode, ViewportState } from '@/types/skill-tree'
+import type { CharacterClass, ProcessedNode, ViewportState } from '@/types/skill-tree'
 
 interface NodeTooltipProps {
   node: ProcessedNode
   viewport: ViewportState
   allocated: boolean
   selectedMasteryEffects?: Map<string, number>
+  classes?: CharacterClass[]
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -34,6 +35,7 @@ export function NodeTooltip({
   viewport,
   allocated,
   selectedMasteryEffects,
+  classes,
 }: NodeTooltipProps) {
   const [sx, sy] = worldToScreen(node.worldX, node.worldY, viewport)
 
@@ -59,7 +61,9 @@ export function NodeTooltip({
         <CardHeader className="px-4 py-3">
           <div className="flex items-center gap-2">
             <CardTitle className="text-base text-stone-100">
-              {node.node.name ?? 'Unknown'}
+              {node.type === 'classStart' && node.node.classStartIndex !== undefined && classes
+                ? classes[node.node.classStartIndex]?.name ?? node.node.name ?? 'Unknown'
+                : node.node.name ?? 'Unknown'}
             </CardTitle>
             <Badge className={`text-xs px-2 py-0.5 ${TYPE_COLORS[node.type] ?? ''}`}>
               {TYPE_LABELS[node.type] ?? node.type}

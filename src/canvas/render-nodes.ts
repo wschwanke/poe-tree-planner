@@ -1,5 +1,5 @@
 import type { SpriteManager } from '@/data/sprite-manager'
-import type { NodeType, ProcessedNode, ViewportState } from '@/types/skill-tree'
+import type { CharacterClass, NodeType, ProcessedNode, ViewportState } from '@/types/skill-tree'
 import { isInView, worldToScreen } from './viewport'
 
 const FRAME_MAP: Record<string, { unallocated: string; canAllocate: string; allocated: string }> = {
@@ -55,6 +55,8 @@ export function renderNodes(
   allocatedNodes: Set<string>,
   canAllocateNodes: Set<string>,
   hoveredNodeId: string | null,
+  hoveredPath: string[] = [],
+  classes: CharacterClass[] = [],
 ): void {
   // Render class start decorations first
   for (const [, pn] of processedNodes) {
@@ -62,11 +64,19 @@ export function renderNodes(
     if (!isInView(pn.worldX, pn.worldY, viewport, 200)) continue
 
     const [sx, sy] = worldToScreen(pn.worldX, pn.worldY, viewport)
-    const className = pn.node.name?.toLowerCase() ?? ''
 
-    // Try class-specific center sprite
-    const centerKey = `center${className}`
-    sprites.drawSprite(ctx, 'startNode', centerKey, sx, sy, viewport.zoom)
+    // Draw the circular shadow/background behind each class start node
+    sprites.drawSprite(ctx, 'startNode', 'PSStartNodeBackgroundInactive', sx, sy, viewport.zoom)
+
+    // Use class name from data.classes (node names like "SIX"/"Seven" don't match sprite keys)
+    const classIndex = pn.node.classStartIndex
+    const className =
+      classIndex !== undefined
+        ? classes[classIndex]?.name?.toLowerCase()
+        : pn.node.name?.toLowerCase()
+    if (className) {
+      sprites.drawSprite(ctx, 'startNode', `center${className}`, sx, sy, viewport.zoom)
+    }
   }
 
   // Collect nodes by render priority (normal < notable < keystone)
@@ -98,6 +108,7 @@ export function renderNodes(
   }
 
   // Render in order: normal, jewels, mastery, notable, keystone
+  const hoveredPathSet = new Set(hoveredPath)
   const renderOrder = [...normalNodes, ...masteryNodes, ...notableNodes, ...keystoneNodes]
 
   for (const [id, pn] of renderOrder) {
@@ -109,7 +120,7 @@ export function renderNodes(
     // Draw icon first (behind the frame)
     // Mastery nodes use different icon paths per state:
     //   allocated:   node.activeIcon → 'masteryActiveSelected' (bright)
-    //   unallocated: node.icon → 'mastery' (muted via reduced alpha)
+    //   unallocated: node.inactiveIcon → 'masteryInactive' (muted via reduced alpha)
     if (pn.type === 'mastery') {
       const iconScale = sprites.getScaleFactor(viewport.zoom) * ICON_SCALE[pn.type]
       if (isAllocated && pn.node.activeIcon) {
@@ -122,10 +133,18 @@ export function renderNodes(
           viewport.zoom,
           iconScale,
         )
-      } else if (pn.node.icon) {
+      } else if (pn.node.inactiveIcon) {
         ctx.save()
         ctx.globalAlpha = 0.4
-        sprites.drawSprite(ctx, 'mastery', pn.node.icon, sx, sy, viewport.zoom, iconScale)
+        sprites.drawSprite(
+          ctx,
+          'masteryInactive',
+          pn.node.inactiveIcon,
+          sx,
+          sy,
+          viewport.zoom,
+          iconScale,
+        )
         ctx.restore()
       }
     } else {
@@ -149,13 +168,22 @@ export function renderNodes(
     }
 
     // Hover preview: draw the allocated appearance at 33% opacity
-    if (isHovered && !isAllocated) {
+    // Applies to the hovered node and all nodes along the path to it
+    if ((isHovered || hoveredPathSet.has(id)) && !isAllocated) {
       ctx.save()
       ctx.globalAlpha = 0.33
       if (pn.type === 'mastery') {
         if (pn.node.activeIcon) {
           const iconScale = sprites.getScaleFactor(viewport.zoom) * ICON_SCALE[pn.type]
-          sprites.drawSprite(ctx, 'masteryActiveSelected', pn.node.activeIcon, sx, sy, viewport.zoom, iconScale)
+          sprites.drawSprite(
+            ctx,
+            'masteryActiveSelected',
+            pn.node.activeIcon,
+            sx,
+            sy,
+            viewport.zoom,
+            iconScale,
+          )
         }
       } else {
         const iconPath = pn.node.icon

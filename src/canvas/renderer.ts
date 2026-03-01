@@ -14,6 +14,7 @@ export interface RenderContext {
   allocatedNodes: Set<string>
   canAllocateNodes: Set<string>
   hoveredNodeId: string | null
+  hoveredPath: string[]
 }
 
 export function render(
@@ -31,7 +32,15 @@ export function render(
   renderGroupBackgrounds(ctx, rc.data, rc.processedNodes, viewport, rc.sprites)
 
   // 2. Connections
-  renderConnections(ctx, rc.processedNodes, rc.adjacency, viewport, rc.allocatedNodes, rc.data)
+  renderConnections(
+    ctx,
+    rc.processedNodes,
+    rc.adjacency,
+    viewport,
+    rc.allocatedNodes,
+    rc.data,
+    rc.hoveredPath,
+  )
 
   // 3. Nodes (frames + icons + class starts)
   renderNodes(
@@ -42,5 +51,7 @@ export function render(
     rc.allocatedNodes,
     rc.canAllocateNodes,
     rc.hoveredNodeId,
+    rc.hoveredPath,
+    rc.data.classes,
   )
 }
