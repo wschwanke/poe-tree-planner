@@ -64,6 +64,7 @@ export function renderConnections(
   allocatedNodes: Set<string>,
   data: SkillTreeData,
   hoveredPath: string[] = [],
+  solverPreview: Set<string> = new Set(),
 ): void {
   const rendered = new Set<string>()
 
@@ -283,6 +284,107 @@ export function renderConnections(
   ctx.lineCap = 'round'
   ctx.beginPath()
   for (const seg of previewSegments) {
+    if (seg.type === 'line') {
+      ctx.moveTo(seg.x1, seg.y1)
+      ctx.lineTo(seg.x2, seg.y2)
+    } else {
+      const { cx, cy, radius, startAngle, endAngle, counterclockwise } = seg
+      ctx.moveTo(cx + radius * Math.cos(startAngle), cy + radius * Math.sin(startAngle))
+      ctx.arc(cx, cy, radius, startAngle, endAngle, counterclockwise)
+    }
+  }
+  ctx.stroke()
+  ctx.restore()
+
+  // Draw solver preview connections
+  if (solverPreview.size < 2) return
+
+  const solverEdges = new Set<string>()
+  for (const nodeId of solverPreview) {
+    const neighbors = adjacency.get(nodeId)
+    if (!neighbors) continue
+    for (const neighborId of neighbors) {
+      if (solverPreview.has(neighborId)) {
+        solverEdges.add(nodeId < neighborId ? `${nodeId}-${neighborId}` : `${neighborId}-${nodeId}`)
+      }
+    }
+  }
+
+  const solverSegments: Segment[] = []
+  for (const edgeKey of solverEdges) {
+    const [idA, idB] = edgeKey.split('-')
+    const nodeA = processedNodes.get(idA)
+    const nodeB = processedNodes.get(idB)
+    if (!nodeA || !nodeB) continue
+
+    if (
+      nodeA.node.group === nodeB.node.group &&
+      nodeA.node.orbit === nodeB.node.orbit &&
+      nodeA.node.orbit > 0
+    ) {
+      const group = data.groups[String(nodeA.node.group)]
+      if (group) {
+        const orbit = nodeA.node.orbit
+        const orbitRadius = data.constants.orbitRadii[orbit] ?? 0
+        const totalInOrbit = data.constants.skillsPerOrbit[orbit] ?? 1
+        const angleA = getOrbitAngle(nodeA.node.orbitIndex, totalInOrbit)
+        const angleB = getOrbitAngle(nodeB.node.orbitIndex, totalInOrbit)
+        const canvasAngleA = angleA - Math.PI / 2
+        const canvasAngleB = angleB - Math.PI / 2
+        let diff = canvasAngleB - canvasAngleA
+        while (diff > Math.PI) diff -= 2 * Math.PI
+        while (diff < -Math.PI) diff += 2 * Math.PI
+        const [gcx, gcy] = worldToScreen(group.x, group.y, viewport)
+        solverSegments.push({
+          type: 'arc',
+          cx: gcx,
+          cy: gcy,
+          radius: orbitRadius * viewport.zoom,
+          startAngle: canvasAngleA,
+          endAngle: canvasAngleB,
+          counterclockwise: diff < 0,
+        })
+        continue
+      }
+    }
+
+    const [sx1, sy1] = worldToScreen(nodeA.worldX, nodeA.worldY, viewport)
+    const [sx2, sy2] = worldToScreen(nodeB.worldX, nodeB.worldY, viewport)
+    solverSegments.push({ type: 'line', x1: sx1, y1: sy1, x2: sx2, y2: sy2 })
+  }
+
+  if (solverSegments.length === 0) return
+
+  const solverWidth = Math.max(activeStyle.minWidth, activeStyle.widthMultiplier * viewport.zoom)
+
+  // Glow pass
+  ctx.save()
+  ctx.strokeStyle = '#06b6d4'
+  ctx.globalAlpha = 0.3
+  ctx.lineWidth = Math.max(activeStyle.minWidth * 2, 8 * viewport.zoom)
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  for (const seg of solverSegments) {
+    if (seg.type === 'line') {
+      ctx.moveTo(seg.x1, seg.y1)
+      ctx.lineTo(seg.x2, seg.y2)
+    } else {
+      const { cx, cy, radius, startAngle, endAngle, counterclockwise } = seg
+      ctx.moveTo(cx + radius * Math.cos(startAngle), cy + radius * Math.sin(startAngle))
+      ctx.arc(cx, cy, radius, startAngle, endAngle, counterclockwise)
+    }
+  }
+  ctx.stroke()
+  ctx.restore()
+
+  // Main line pass
+  ctx.save()
+  ctx.strokeStyle = '#06b6d4'
+  ctx.globalAlpha = 0.7
+  ctx.lineWidth = solverWidth
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  for (const seg of solverSegments) {
     if (seg.type === 'line') {
       ctx.moveTo(seg.x1, seg.y1)
       ctx.lineTo(seg.x2, seg.y2)

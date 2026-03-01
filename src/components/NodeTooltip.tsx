@@ -90,10 +90,39 @@ export function NodeTooltip({
                   {text}
                 </p>
               ))}
+              <Separator className="bg-stone-800 my-1" />
+              <p className="text-xs text-stone-500 mb-1">Other choices:</p>
+              {node.node.masteryEffects
+                ?.filter((_, i) => i !== masteryEffectIndex)
+                .map((effect, i) => (
+                  <p key={`other-${i}`} className="text-xs text-stone-500">
+                    {effect.stats.join(', ')}
+                  </p>
+                ))}
               <p className="text-xs text-stone-600 pt-1">Click to change effect</p>
             </>
           ) : isMastery && effectCount > 0 ? (
-            <p className="text-sm text-stone-400">Click to choose from {effectCount} effects</p>
+            <>
+              <p className="text-xs text-stone-500 mb-1">Available effects:</p>
+              {node.node.masteryEffects?.map((effect, i) => (
+                <div key={i} className="mb-1.5">
+                  {effect.stats.map((stat, j) => (
+                    <p key={j} className="text-sm text-blue-300/80">
+                      {stat.split('\n').map((line, k) => (
+                        <span key={k}>
+                          {k > 0 && <br />}
+                          {line}
+                        </span>
+                      ))}
+                    </p>
+                  ))}
+                  {i < effectCount - 1 && <Separator className="bg-stone-800 mt-1.5" />}
+                </div>
+              ))}
+              {allocated && (
+                <p className="text-xs text-stone-600 pt-1">Click to choose an effect</p>
+              )}
+            </>
           ) : (
             <>
               {stats.map((stat, i) => (

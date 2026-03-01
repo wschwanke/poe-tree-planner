@@ -57,6 +57,8 @@ export function renderNodes(
   hoveredNodeId: string | null,
   hoveredPath: string[] = [],
   classes: CharacterClass[] = [],
+  searchMatchNodeIds: Set<string> = new Set(),
+  animationTime = 0,
 ): void {
   // Render class start decorations first
   for (const [, pn] of processedNodes) {
@@ -134,8 +136,6 @@ export function renderNodes(
           iconScale,
         )
       } else if (pn.node.inactiveIcon) {
-        ctx.save()
-        ctx.globalAlpha = 0.4
         sprites.drawSprite(
           ctx,
           'masteryInactive',
@@ -145,7 +145,6 @@ export function renderNodes(
           viewport.zoom,
           iconScale,
         )
-        ctx.restore()
       }
     } else {
       const iconPath = pn.node.icon
@@ -200,6 +199,44 @@ export function renderNodes(
       ctx.restore()
     }
   }
+
+  // Search highlight glow pass — renders on top of all nodes
+  renderSearchHighlights(ctx, renderOrder, viewport, searchMatchNodeIds, animationTime)
+}
+
+function renderSearchHighlights(
+  ctx: CanvasRenderingContext2D,
+  renderOrder: [string, ProcessedNode][],
+  viewport: ViewportState,
+  searchMatchNodeIds: Set<string>,
+  animationTime: number,
+): void {
+  if (searchMatchNodeIds.size === 0) return
+
+  const pulsePhase = (Math.sin(animationTime * 0.003) + 1) / 2
+  const glowAlpha = 0.5 + pulsePhase * 0.5
+
+  ctx.save()
+  for (const [id, pn] of renderOrder) {
+    if (!searchMatchNodeIds.has(id)) continue
+
+    const [sx, sy] = worldToScreen(pn.worldX, pn.worldY, viewport)
+    const nodeRadius = getNodeRadius(pn.type) * viewport.zoom
+
+    // Use minimum pixel sizes so glow stays visible at any zoom
+    const spread = Math.max(4, (10 + pulsePhase * 6) * viewport.zoom)
+    const lineW = Math.max(2, 4 * viewport.zoom)
+    const blur = Math.max(8, spread * 3)
+
+    ctx.beginPath()
+    ctx.arc(sx, sy, nodeRadius + spread, 0, Math.PI * 2)
+    ctx.strokeStyle = `rgba(255, 40, 40, ${glowAlpha})`
+    ctx.lineWidth = lineW
+    ctx.shadowColor = `rgba(255, 30, 30, ${0.6 + pulsePhase * 0.4})`
+    ctx.shadowBlur = blur
+    ctx.stroke()
+  }
+  ctx.restore()
 }
 
 export function getNodeRadius(type: NodeType): number {

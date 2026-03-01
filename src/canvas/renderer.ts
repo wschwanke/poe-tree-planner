@@ -4,6 +4,7 @@ import type { ProcessedNode, SkillTreeData, ViewportState } from '@/types/skill-
 import { renderGroupBackgrounds } from './render-backgrounds'
 import { renderConnections } from './render-connections'
 import { renderNodes } from './render-nodes'
+import { type PlanningFlags, renderPlanningOverlays } from './render-planning'
 
 export interface RenderContext {
   data: SkillTreeData
@@ -15,6 +16,10 @@ export interface RenderContext {
   canAllocateNodes: Set<string>
   hoveredNodeId: string | null
   hoveredPath: string[]
+  searchMatchNodeIds: Set<string>
+  animationTime: number
+  planningFlags: PlanningFlags | null
+  solverPreview: Set<string>
 }
 
 export function render(
@@ -53,5 +58,19 @@ export function render(
     rc.hoveredNodeId,
     rc.hoveredPath,
     rc.data.classes,
+    rc.searchMatchNodeIds,
+    rc.animationTime,
   )
+
+  // 4. Planning overlays (flags + solver preview)
+  if (rc.planningFlags) {
+    renderPlanningOverlays(
+      ctx,
+      rc.processedNodes,
+      viewport,
+      rc.planningFlags,
+      rc.solverPreview,
+      rc.allocatedNodes,
+    )
+  }
 }

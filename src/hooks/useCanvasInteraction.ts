@@ -5,12 +5,18 @@ import type { ProcessedNode, ViewportState } from '@/types/skill-tree'
 
 const CLICK_THRESHOLD = 5
 
+export interface NodeClickEvent {
+  nodeId: string
+  ctrlKey: boolean
+  altKey: boolean
+}
+
 interface UseCanvasInteractionProps {
   processedNodes: Map<string, ProcessedNode>
   spatialIndex: SpatialIndex
   viewport: ViewportState
   onPan: (dx: number, dy: number) => void
-  onNodeClick: (nodeId: string) => void
+  onNodeClick: (event: NodeClickEvent) => void
   onHover: (nodeId: string | null) => void
 }
 
@@ -61,7 +67,7 @@ export function useCanvasInteraction({
         const y = e.clientY - rect.top
         const hit = hitTest(x, y, viewport, processedNodes, spatialIndex)
         if (hit) {
-          onNodeClick(hit)
+          onNodeClick({ nodeId: hit, ctrlKey: e.ctrlKey, altKey: e.altKey })
         }
       }
       isDragging.current = false
