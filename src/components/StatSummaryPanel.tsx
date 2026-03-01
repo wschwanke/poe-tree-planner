@@ -32,13 +32,13 @@ export function StatSummaryPanel({
   const keystoneStats = stats.filter((s) => s.isKeystone)
 
   return (
-    <div className="absolute top-0 right-0 z-40 h-full w-72 pointer-events-none">
-      <Card className="m-4 h-[calc(100%-2rem)] bg-stone-950/90 border-stone-800 backdrop-blur-sm pointer-events-auto flex flex-col">
-        <CardHeader className="pb-2 shrink-0">
+    <div className="absolute top-0 right-0 z-40 h-full w-80 pointer-events-none">
+      <Card className="m-4 h-[calc(100%-2rem)] gap-0 py-0 bg-stone-950/90 border-stone-800 backdrop-blur-sm pointer-events-auto">
+        <CardHeader className="px-4 py-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm text-stone-300">Passive Stats</CardTitle>
-            <Badge variant="outline" className="text-xs border-amber-900/50">
-              <span className="text-amber-400">{pointsUsed}</span>
+            <Badge variant="outline" className="border-amber-900/50">
+              <span className="text-amber-400 font-bold">{pointsUsed}</span>
               <span className="text-stone-500 mx-0.5">/</span>
               <span className="text-stone-400">{totalPoints}</span>
             </Badge>
@@ -46,12 +46,14 @@ export function StatSummaryPanel({
         </CardHeader>
         <Separator className="bg-stone-800" />
         <ScrollArea className="flex-1 min-h-0">
-          <CardContent className="p-3 space-y-0.5">
+          <CardContent className="px-4 py-3 space-y-1">
             {stats.length === 0 && masteryStats.length === 0 && (
-              <p className="text-xs text-stone-600 text-center py-4">Allocate nodes to see stats</p>
+              <p className="text-sm text-stone-600 text-center py-4">
+                Allocate nodes to see stats
+              </p>
             )}
             {numericStats.map((stat, i) => (
-              <p key={i} className="text-xs text-blue-300 leading-relaxed">
+              <p key={i} className="text-sm text-blue-300 leading-relaxed">
                 {formatStatValue(stat)}
               </p>
             ))}
@@ -59,21 +61,21 @@ export function StatSummaryPanel({
               <Separator className="bg-stone-800 my-2" />
             )}
             {keystoneStats.map((stat, i) => (
-              <p key={`k-${i}`} className="text-xs text-amber-300 leading-relaxed">
+              <p key={`k-${i}`} className="text-sm text-amber-300 leading-relaxed">
                 {stat.description}
               </p>
             ))}
             {masteryStats.length > 0 && (
               <>
                 <Separator className="bg-stone-800 my-2" />
-                <p className="text-[10px] text-purple-400 font-semibold uppercase tracking-wide pb-1">
+                <p className="text-xs text-purple-400 font-semibold uppercase tracking-wide pb-1">
                   Masteries
                 </p>
                 {masteryStats.map((ms, i) => (
                   <div key={i} className="pb-1">
-                    <p className="text-[10px] text-stone-500">{ms.masteryName}</p>
+                    <p className="text-xs text-stone-500">{ms.masteryName}</p>
                     {ms.stats.map((stat, j) => (
-                      <p key={j} className="text-xs text-purple-300 leading-relaxed">
+                      <p key={j} className="text-sm text-purple-300 leading-relaxed">
                         {stat}
                       </p>
                     ))}
@@ -84,12 +86,12 @@ export function StatSummaryPanel({
           </CardContent>
         </ScrollArea>
         <Separator className="bg-stone-800" />
-        <div className="p-3 shrink-0">
+        <div className="px-4 py-3 shrink-0">
           <Button
             variant="outline"
             size="sm"
             onClick={onReset}
-            className="w-full text-xs border-stone-700 hover:bg-stone-800 hover:text-stone-200"
+            className="w-full border-stone-700 hover:bg-stone-800 hover:text-stone-200"
           >
             Reset Tree
           </Button>

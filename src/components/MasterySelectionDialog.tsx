@@ -41,7 +41,7 @@ export function MasterySelectionDialog({
         <DialogHeader>
           <div className="flex items-center gap-2">
             <DialogTitle className="text-amber-500">{node.node.name ?? 'Mastery'}</DialogTitle>
-            <Badge className="bg-purple-700 text-[10px] px-1.5 py-0">Mastery</Badge>
+            <Badge className="bg-purple-700 text-xs px-2 py-0.5">Mastery</Badge>
           </div>
           <DialogDescription className="text-stone-400">
             {isAllocated ? 'Change or remove your mastery effect' : 'Choose a mastery effect'}
@@ -55,23 +55,21 @@ export function MasterySelectionDialog({
               const isSelected = index === currentEffectIndex
               const canSelect = isAllocated || canAffordPoint
               return (
-                <button
-                  type="button"
+                <Button
                   key={effect.effect}
+                  variant="outline"
                   onClick={() => canSelect && onSelectEffect(node.id, index)}
                   disabled={!canSelect}
-                  className={`w-full text-left p-3 rounded-lg border transition-all ${
+                  className={`w-full h-auto text-left justify-start p-4 whitespace-normal ${
                     isSelected
-                      ? 'border-amber-500 bg-amber-500/10'
-                      : canSelect
-                        ? 'border-stone-700 hover:border-stone-500 hover:bg-stone-800/50 cursor-pointer'
-                        : 'border-stone-800 opacity-50 cursor-not-allowed'
+                      ? 'border-amber-500 bg-amber-500/10 hover:bg-amber-500/15'
+                      : 'border-stone-700 hover:border-stone-500 hover:bg-stone-800/50'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-2 w-full">
                     <div className="space-y-1 flex-1">
                       {effect.stats.map((stat, i) => (
-                        <p key={i} className="text-xs text-blue-300">
+                        <p key={i} className="text-sm text-blue-300">
                           {stat.split('\n').map((line, j) => (
                             <span key={j}>
                               {j > 0 && <br />}
@@ -81,18 +79,16 @@ export function MasterySelectionDialog({
                         </p>
                       ))}
                       {effect.reminderText?.map((text, i) => (
-                        <p key={`r-${i}`} className="text-[11px] text-stone-500 italic">
+                        <p key={`r-${i}`} className="text-xs text-stone-500 italic">
                           {text}
                         </p>
                       ))}
                     </div>
                     {isSelected && (
-                      <Badge className="bg-amber-600 text-[10px] px-1.5 py-0 shrink-0">
-                        Selected
-                      </Badge>
+                      <Badge className="bg-amber-600 text-xs px-2 py-0.5 shrink-0">Selected</Badge>
                     )}
                   </div>
-                </button>
+                </Button>
               )
             })}
           </div>
@@ -104,7 +100,7 @@ export function MasterySelectionDialog({
               variant="outline"
               size="sm"
               onClick={() => onUnallocate(node.id)}
-              className="w-full text-xs border-stone-700 hover:bg-red-950/50 hover:border-red-800 hover:text-red-300"
+              className="w-full border-stone-700 hover:bg-red-950/50 hover:border-red-800 hover:text-red-300"
             >
               Remove Mastery
             </Button>

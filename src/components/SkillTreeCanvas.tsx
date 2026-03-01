@@ -133,14 +133,15 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
         onMouseLeave={interaction.handleMouseLeave}
       />
 
-      {/* Class selector dropdown */}
-      <div className="absolute top-3 left-3 z-10">
+      {/* Top bar: class selector + point counter */}
+      <div className="absolute top-3 left-3 z-40 flex items-center gap-3">
         <ClassSelector
           data={data}
           processedNodes={processedNodes}
           selectedClass={state.selectedClass}
           onSelect={handleClassSelect}
         />
+        {state.selectedClass !== null && <PointCounter used={pointsUsed} total={totalPoints} />}
       </div>
 
       {/* Mastery selection dialog */}
@@ -153,9 +154,6 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
         onUnallocate={handleMasteryUnallocate}
         onClose={closeMasteryDialog}
       />
-
-      {/* Point counter */}
-      {state.selectedClass !== null && <PointCounter used={pointsUsed} total={totalPoints} />}
 
       {/* Node tooltip */}
       {hoveredNode?.node.name && (

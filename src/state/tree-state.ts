@@ -65,19 +65,19 @@ export function treeReducer(state: TreeState, action: TreeAction): TreeState {
         connected = getConnectedComponent(state.classStartNodeId, action.adjacency, newAllocated)
       }
 
-      // Auto-remove masteries whose group has no remaining allocated notables
+      // Auto-remove masteries whose group has no remaining allocated notables.
+      // Mastery nodes are not in the adjacency graph, so they won't appear in
+      // `connected`. Instead, check if any notable in the same group survived.
       const newMasteryEffects = new Map(state.selectedMasteryEffects)
       for (const [masteryId] of state.selectedMasteryEffects) {
-        if (!connected.has(masteryId)) {
+        const masteryNode = action.processedNodes.get(masteryId)
+        if (!masteryNode) {
           newMasteryEffects.delete(masteryId)
           continue
         }
-        const masteryNode = action.processedNodes.get(masteryId)
-        if (!masteryNode) continue
         const groupId = masteryNode.node.group
         let hasAllocatedNotable = false
         for (const nodeId of connected) {
-          if (nodeId === masteryId) continue
           const pn = action.processedNodes.get(nodeId)
           if (pn && pn.node.group === groupId && pn.node.isNotable) {
             hasAllocatedNotable = true
@@ -85,9 +85,14 @@ export function treeReducer(state: TreeState, action: TreeAction): TreeState {
           }
         }
         if (!hasAllocatedNotable) {
-          connected.delete(masteryId)
           newMasteryEffects.delete(masteryId)
         }
+      }
+
+      // Re-add surviving mastery nodes to allocatedNodes since they
+      // aren't in the adjacency graph and won't appear in `connected`
+      for (const masteryId of newMasteryEffects.keys()) {
+        connected.add(masteryId)
       }
 
       return {

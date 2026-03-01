@@ -148,15 +148,27 @@ export function renderNodes(
       sprites.drawSprite(ctx, 'frame', frameKey, sx, sy, viewport.zoom)
     }
 
-    // Hover highlight
-    if (isHovered) {
-      const radius = getNodeRadius(pn.type) * viewport.zoom * 0.5
+    // Hover preview: draw the allocated appearance at 33% opacity
+    if (isHovered && !isAllocated) {
       ctx.save()
-      ctx.globalAlpha = 0.3
-      ctx.fillStyle = '#ffffff'
-      ctx.beginPath()
-      ctx.arc(sx, sy, radius, 0, Math.PI * 2)
-      ctx.fill()
+      ctx.globalAlpha = 0.33
+      if (pn.type === 'mastery') {
+        if (pn.node.activeIcon) {
+          const iconScale = sprites.getScaleFactor(viewport.zoom) * ICON_SCALE[pn.type]
+          sprites.drawSprite(ctx, 'masteryActiveSelected', pn.node.activeIcon, sx, sy, viewport.zoom, iconScale)
+        }
+      } else {
+        const iconPath = pn.node.icon
+        if (iconPath) {
+          const activeCategory = getIconCategory(pn.type, true)
+          const iconScale = sprites.getScaleFactor(viewport.zoom) * ICON_SCALE[pn.type]
+          sprites.drawSprite(ctx, activeCategory, iconPath, sx, sy, viewport.zoom, iconScale)
+        }
+        const activeFrame = FRAME_MAP[pn.type]
+        if (activeFrame) {
+          sprites.drawSprite(ctx, 'frame', activeFrame.allocated, sx, sy, viewport.zoom)
+        }
+      }
       ctx.restore()
     }
   }

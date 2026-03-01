@@ -1,3 +1,10 @@
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type { ProcessedNode, SkillTreeData } from '@/types/skill-tree'
 
 interface ClassSelectorProps {
@@ -21,8 +28,8 @@ export function ClassSelector({
     }
   }
 
-  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const idx = Number(e.target.value)
+  const handleChange = (value: string) => {
+    const idx = Number(value)
     const startNodeId = classStarts.get(idx)
     if (startNodeId !== undefined) {
       onSelect(idx, startNodeId)
@@ -30,22 +37,27 @@ export function ClassSelector({
   }
 
   return (
-    <select
-      value={selectedClass ?? ''}
-      onChange={handleChange}
-      className="bg-stone-900 border border-amber-900/50 text-stone-100 text-sm rounded px-2 py-1.5 cursor-pointer outline-none focus:border-amber-500/70"
+    <Select
+      value={selectedClass !== null ? String(selectedClass) : undefined}
+      onValueChange={handleChange}
     >
-      <option value="" disabled>
-        Select class...
-      </option>
-      {data.classes.map((cls, idx) => {
-        if (!classStarts.has(idx)) return null
-        return (
-          <option key={cls.name} value={idx}>
-            {cls.name}
-          </option>
-        )
-      })}
-    </select>
+      <SelectTrigger className="w-[180px] bg-stone-950/90 border-amber-900/50 text-stone-100 backdrop-blur-sm focus:ring-amber-500/50">
+        <SelectValue placeholder="Select class..." />
+      </SelectTrigger>
+      <SelectContent className="bg-stone-950 border-stone-700">
+        {data.classes.map((cls, idx) => {
+          if (!classStarts.has(idx)) return null
+          return (
+            <SelectItem
+              key={cls.name}
+              value={String(idx)}
+              className="text-stone-200 focus:bg-stone-800 focus:text-stone-100"
+            >
+              {cls.name}
+            </SelectItem>
+          )
+        })}
+      </SelectContent>
+    </Select>
   )
 }
