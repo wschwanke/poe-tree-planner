@@ -1,16 +1,28 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { centerOnWorld, createViewport, pan, zoomAtPoint } from '@/canvas/viewport'
 import type { ViewportState } from '@/types/skill-tree'
 
 export function useViewport(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
-  const [viewport, setViewport] = useState<ViewportState>(() =>
-    createViewport(window.innerWidth, window.innerHeight),
-  )
+  // Primary viewport lives in a ref — mutations don't trigger React re-renders.
+  // The rAF render loop reads from this ref directly.
+  const viewportRef = useRef<ViewportState>(createViewport(window.innerWidth, window.innerHeight))
+
+  // A dirty flag so the render loop knows when to redraw.
+  const dirtyRef = useRef(true)
+
+  // Throttled React state for components that need reactivity (e.g. NodeTooltip).
+  // Updated at most once per rAF frame via the render loop in SkillTreeCanvas.
+  const [viewportState, setViewportState] = useState<ViewportState>(() => viewportRef.current)
 
   // Handle resize
   useEffect(() => {
     const handleResize = () => {
-      setViewport((vp) => ({ ...vp, width: window.innerWidth, height: window.innerHeight }))
+      viewportRef.current = {
+        ...viewportRef.current,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }
+      dirtyRef.current = true
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
@@ -18,7 +30,8 @@ export function useViewport(canvasRef: React.RefObject<HTMLCanvasElement | null>
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault()
-    setViewport((vp) => zoomAtPoint(vp, e.offsetX, e.offsetY, e.deltaY))
+    viewportRef.current = zoomAtPoint(viewportRef.current, e.offsetX, e.offsetY, e.deltaY)
+    dirtyRef.current = true
   }, [])
 
   // Attach wheel listener with passive: false
@@ -30,12 +43,21 @@ export function useViewport(canvasRef: React.RefObject<HTMLCanvasElement | null>
   }, [canvasRef, handleWheel])
 
   const handlePan = useCallback((dx: number, dy: number) => {
-    setViewport((vp) => pan(vp, dx, dy))
+    viewportRef.current = pan(viewportRef.current, dx, dy)
+    dirtyRef.current = true
   }, [])
 
   const handleCenterOn = useCallback((worldX: number, worldY: number, zoom?: number) => {
-    setViewport((vp) => centerOnWorld(vp, worldX, worldY, zoom))
+    viewportRef.current = centerOnWorld(viewportRef.current, worldX, worldY, zoom)
+    dirtyRef.current = true
   }, [])
 
-  return { viewport, setViewport, handlePan, handleCenterOn }
+  return {
+    viewportRef,
+    dirtyRef,
+    viewportState,
+    setViewportState,
+    handlePan,
+    handleCenterOn,
+  }
 }

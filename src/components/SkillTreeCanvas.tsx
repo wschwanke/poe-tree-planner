@@ -25,7 +25,8 @@ interface SkillTreeCanvasProps {
 export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
   const { data, processedNodes, adjacency, spatialIndex, sprites } = context
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const { viewport, handlePan, handleCenterOn } = useViewport(canvasRef)
+  const { viewportRef, dirtyRef, viewportState, setViewportState, handlePan, handleCenterOn } =
+    useViewport(canvasRef)
 
   // Initialize store context
   useEffect(() => {
@@ -70,10 +71,28 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
     [planningActive, toggleFlag, handleNodeClick],
   )
 
+  // Mark dirty when store state changes that affect rendering
+  const prevAllocatedRef = useRef(allocatedNodes)
+  const prevCanAllocateRef = useRef(canAllocateNodes)
+  const prevHoveredRef = useRef(hoveredNodeId)
+  const prevHoveredPathRef = useRef(hoveredPath)
+  if (
+    allocatedNodes !== prevAllocatedRef.current ||
+    canAllocateNodes !== prevCanAllocateRef.current ||
+    hoveredNodeId !== prevHoveredRef.current ||
+    hoveredPath !== prevHoveredPathRef.current
+  ) {
+    dirtyRef.current = true
+    prevAllocatedRef.current = allocatedNodes
+    prevCanAllocateRef.current = canAllocateNodes
+    prevHoveredRef.current = hoveredNodeId
+    prevHoveredPathRef.current = hoveredPath
+  }
+
   const interaction = useCanvasInteraction({
     processedNodes,
     spatialIndex,
-    viewport,
+    viewportRef,
     onPan: handlePan,
     onNodeClick: handleCanvasNodeClick,
     onHover: setHovered,
@@ -124,18 +143,30 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
       if (e.key === 'p' || e.key === 'P') {
         e.preventDefault()
         usePlanningStore.getState().togglePlanningMode()
+        dirtyRef.current = true
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [dirtyRef])
 
-  // Preload sprites when zoom changes
+  // Preload sprites when zoom level changes (not on every fractional zoom)
+  const lastPreloadZoomRef = useRef<string>('')
   useEffect(() => {
-    sprites.preloadAllCategories(viewport.zoom)
-  }, [sprites, viewport.zoom])
+    const checkZoom = () => {
+      const zoomLevel = sprites.getZoomLevel(viewportRef.current.zoom)
+      if (zoomLevel !== lastPreloadZoomRef.current) {
+        lastPreloadZoomRef.current = zoomLevel
+        sprites.preloadAllCategories(viewportRef.current.zoom)
+      }
+    }
+    checkZoom()
+    // Re-check periodically in case zoom changed
+    const interval = setInterval(checkZoom, 200)
+    return () => clearInterval(interval)
+  }, [sprites, viewportRef])
 
-  // Render loop
+  // Render loop — reads from refs, only renders when dirty
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -143,43 +174,85 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Set canvas size for DPR
-    const dpr = window.devicePixelRatio || 1
-    canvas.width = viewport.width * dpr
-    canvas.height = viewport.height * dpr
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-
     let animId: number
+    // Track last known search state to detect changes
+    let lastSearchSize = useSearchStore.getState().matchingNodeIds.size
+    let lastPlanningVersion = 0
+
     const frame = (timestamp: number) => {
+      const vp = viewportRef.current
+
+      // Set canvas size for DPR (only when dimensions change)
+      const dpr = window.devicePixelRatio || 1
+      const targetW = vp.width * dpr
+      const targetH = vp.height * dpr
+      if (canvas.width !== targetW || canvas.height !== targetH) {
+        canvas.width = targetW
+        canvas.height = targetH
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        dirtyRef.current = true
+      }
+
+      // Check if search state changed
+      const searchState = useSearchStore.getState()
+      if (searchState.matchingNodeIds.size !== lastSearchSize) {
+        lastSearchSize = searchState.matchingNodeIds.size
+        dirtyRef.current = true
+      }
+
+      // Check if planning state changed
       const planningState = usePlanningStore.getState()
-      render(ctx, viewport, {
-        data,
-        processedNodes,
-        adjacency,
-        spatialIndex,
-        sprites,
-        allocatedNodes,
-        canAllocateNodes,
-        hoveredNodeId,
-        hoveredPath,
-        searchMatchNodeIds: useSearchStore.getState().matchingNodeIds,
-        animationTime: timestamp,
-        planningFlags: planningState.active
-          ? {
-              required: planningState.requiredNodes,
-              wouldLike: planningState.wouldLikeNodes,
-              blocked: planningState.blockedNodes,
-            }
-          : null,
-        solverPreview: planningState.solverPreview,
-      })
+      const planVer =
+        planningState.requiredNodes.size +
+        planningState.wouldLikeNodes.size * 100 +
+        planningState.blockedNodes.size * 10000 +
+        planningState.solverPreview.size * 1000000 +
+        (planningState.active ? 1 : 0)
+      if (planVer !== lastPlanningVersion) {
+        lastPlanningVersion = planVer
+        dirtyRef.current = true
+      }
+
+      // Animate search highlights — only dirty if there's an active search
+      if (searchState.matchingNodeIds.size > 0) {
+        dirtyRef.current = true
+      }
+
+      if (dirtyRef.current) {
+        dirtyRef.current = false
+
+        // Sync throttled state for React components (tooltip, etc.)
+        setViewportState(vp)
+
+        render(ctx, vp, {
+          data,
+          processedNodes,
+          adjacency,
+          spatialIndex,
+          sprites,
+          allocatedNodes,
+          canAllocateNodes,
+          hoveredNodeId,
+          hoveredPath,
+          searchMatchNodeIds: searchState.matchingNodeIds,
+          animationTime: timestamp,
+          planningFlags: planningState.active
+            ? {
+                required: planningState.requiredNodes,
+                wouldLike: planningState.wouldLikeNodes,
+                blocked: planningState.blockedNodes,
+              }
+            : null,
+          solverPreview: planningState.solverPreview,
+        })
+      }
+
       animId = requestAnimationFrame(frame)
     }
     animId = requestAnimationFrame(frame)
 
     return () => cancelAnimationFrame(animId)
   }, [
-    viewport,
     data,
     processedNodes,
     adjacency,
@@ -189,6 +262,9 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
     canAllocateNodes,
     hoveredNodeId,
     hoveredPath,
+    viewportRef,
+    dirtyRef,
+    setViewportState,
   ])
 
   const hoveredNode = hoveredNodeId ? processedNodes.get(hoveredNodeId) : null
@@ -205,7 +281,7 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
       <canvas
         ref={canvasRef}
         className={`absolute inset-0 ${hoveredNodeId ? 'cursor-pointer' : planningActive ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'}`}
-        style={{ width: viewport.width, height: viewport.height }}
+        style={{ width: viewportState.width, height: viewportState.height }}
         onMouseDown={interaction.handleMouseDown}
         onMouseMove={interaction.handleMouseMove}
         onMouseUp={interaction.handleMouseUp}
@@ -263,7 +339,7 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
         <div className="absolute inset-0 pointer-events-none">
           <NodeTooltip
             node={hoveredNode}
-            viewport={viewport}
+            viewport={viewportState}
             allocated={allocatedNodes.has(hoveredNode.id)}
             selectedMasteryEffects={selectedMasteryEffects}
             classes={data.classes}

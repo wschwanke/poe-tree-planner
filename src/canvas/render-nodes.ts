@@ -47,6 +47,15 @@ function getIconCategory(type: NodeType, allocated: boolean): string {
   }
 }
 
+// Zoom threshold below which normal nodes render as simple dots instead of sprites.
+const LOD_ZOOM_THRESHOLD = 0.15
+
+const LOD_COLORS = {
+  unallocated: '#3d372a',
+  canAllocate: '#6b5c3e',
+  allocated: '#c8b074',
+}
+
 export function renderNodes(
   ctx: CanvasRenderingContext2D,
   processedNodes: Map<string, ProcessedNode>,
@@ -60,6 +69,8 @@ export function renderNodes(
   searchMatchNodeIds: Set<string> = new Set(),
   animationTime = 0,
 ): void {
+  const useLOD = viewport.zoom < LOD_ZOOM_THRESHOLD
+
   // Render class start decorations first
   for (const [, pn] of processedNodes) {
     if (pn.type !== 'classStart') continue
@@ -109,20 +120,51 @@ export function renderNodes(
     }
   }
 
-  // Render in order: normal, jewels, mastery, notable, keystone
+  // LOD: batch-render normal nodes as simple circles when zoomed out
+  if (useLOD && normalNodes.length > 0) {
+    const nodeRadius = Math.max(2, 34 * viewport.zoom)
+
+    // Group by color to minimize state changes
+    const groups: { color: string; nodes: [string, ProcessedNode][] }[] = [
+      { color: LOD_COLORS.allocated, nodes: [] },
+      { color: LOD_COLORS.canAllocate, nodes: [] },
+      { color: LOD_COLORS.unallocated, nodes: [] },
+    ]
+    for (const entry of normalNodes) {
+      const [id] = entry
+      if (allocatedNodes.has(id)) groups[0].nodes.push(entry)
+      else if (canAllocateNodes.has(id)) groups[1].nodes.push(entry)
+      else groups[2].nodes.push(entry)
+    }
+
+    for (const group of groups) {
+      if (group.nodes.length === 0) continue
+      ctx.fillStyle = group.color
+      ctx.beginPath()
+      for (const [, pn] of group.nodes) {
+        const [sx, sy] = worldToScreen(pn.worldX, pn.worldY, viewport)
+        ctx.moveTo(sx + nodeRadius, sy)
+        ctx.arc(sx, sy, nodeRadius, 0, Math.PI * 2)
+      }
+      ctx.fill()
+    }
+  }
+
+  // Render in order: normal (if not LOD), mastery, notable, keystone
   const hoveredPathSet = new Set(hoveredPath)
+  const spriteNodes = useLOD
+    ? [...masteryNodes, ...notableNodes, ...keystoneNodes]
+    : [...normalNodes, ...masteryNodes, ...notableNodes, ...keystoneNodes]
+  // Full render order for search highlights (includes LOD nodes)
   const renderOrder = [...normalNodes, ...masteryNodes, ...notableNodes, ...keystoneNodes]
 
-  for (const [id, pn] of renderOrder) {
+  for (const [id, pn] of spriteNodes) {
     const [sx, sy] = worldToScreen(pn.worldX, pn.worldY, viewport)
     const isAllocated = allocatedNodes.has(id)
     const isCanAllocate = canAllocateNodes.has(id)
     const isHovered = id === hoveredNodeId
 
     // Draw icon first (behind the frame)
-    // Mastery nodes use different icon paths per state:
-    //   allocated:   node.activeIcon → 'masteryActiveSelected' (bright)
-    //   unallocated: node.inactiveIcon → 'masteryInactive' (muted via reduced alpha)
     if (pn.type === 'mastery') {
       const iconScale = sprites.getScaleFactor(viewport.zoom) * ICON_SCALE[pn.type]
       if (isAllocated && pn.node.activeIcon) {
@@ -167,7 +209,6 @@ export function renderNodes(
     }
 
     // Hover preview: draw the allocated appearance at 33% opacity
-    // Applies to the hovered node and all nodes along the path to it
     if ((isHovered || hoveredPathSet.has(id)) && !isAllocated) {
       ctx.save()
       ctx.globalAlpha = 0.33

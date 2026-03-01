@@ -15,7 +15,7 @@ export interface NodeClickEvent {
 interface UseCanvasInteractionProps {
   processedNodes: Map<string, ProcessedNode>
   spatialIndex: SpatialIndex
-  viewport: ViewportState
+  viewportRef: React.RefObject<ViewportState>
   onPan: (dx: number, dy: number) => void
   onNodeClick: (event: NodeClickEvent) => void
   onHover: (nodeId: string | null) => void
@@ -24,7 +24,7 @@ interface UseCanvasInteractionProps {
 export function useCanvasInteraction({
   processedNodes,
   spatialIndex,
-  viewport,
+  viewportRef,
   onPan,
   onNodeClick,
   onHover,
@@ -50,15 +50,15 @@ export function useCanvasInteraction({
         dragStart.current = { x: e.clientX, y: e.clientY }
         onPan(dx, dy)
       } else {
-        // Hover detection
+        // Hover detection — reads viewport from ref (no dependency on viewport state)
         const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
         const x = e.clientX - rect.left
         const y = e.clientY - rect.top
-        const hit = hitTest(x, y, viewport, processedNodes, spatialIndex)
+        const hit = hitTest(x, y, viewportRef.current, processedNodes, spatialIndex)
         onHover(hit)
       }
     },
-    [viewport, processedNodes, spatialIndex, onPan, onHover],
+    [processedNodes, spatialIndex, viewportRef, onPan, onHover],
   )
 
   const handleMouseUp = useCallback(
@@ -68,14 +68,14 @@ export function useCanvasInteraction({
         const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
         const x = e.clientX - rect.left
         const y = e.clientY - rect.top
-        const hit = hitTest(x, y, viewport, processedNodes, spatialIndex)
+        const hit = hitTest(x, y, viewportRef.current, processedNodes, spatialIndex)
         if (hit) {
           onNodeClick({ nodeId: hit, ctrlKey: e.ctrlKey, altKey: e.altKey, button: mouseButton.current })
         }
       }
       isDragging.current = false
     },
-    [viewport, processedNodes, spatialIndex, onNodeClick],
+    [viewportRef, processedNodes, spatialIndex, onNodeClick],
   )
 
   const handleMouseLeave = useCallback(() => {
