@@ -9,6 +9,7 @@ import { usePlanningStore } from '@/state/planning-store'
 import { useSearchStore } from '@/state/search-store'
 import { useTreeStore } from '@/state/tree-store'
 import { ClassSelector } from './ClassSelectionDialog'
+import { HelpMenu } from './HelpMenu'
 import { CommandPalette } from './CommandPalette'
 import { MasterySelectionDialog } from './MasterySelectionDialog'
 import { NodeTooltip } from './NodeTooltip'
@@ -55,12 +56,11 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
   const handleCanvasNodeClick = useCallback(
     (event: NodeClickEvent) => {
       if (planningActive) {
-        const flag: PlanningFlag =
-          event.button === 2
-            ? 'required'
-            : event.altKey
-              ? 'blocked'
-              : 'wouldLike'
+        const flag: PlanningFlag = event.ctrlKey
+          ? 'blocked'
+          : event.button === 2
+            ? 'wouldLike'
+            : 'required'
         toggleFlag(event.nodeId, flag)
       } else {
         if (event.button === 2) return
@@ -234,6 +234,7 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
             processedNodes={processedNodes}
           />
         )}
+        <HelpMenu />
       </div>
 
       {/* Mastery selection dialog */}

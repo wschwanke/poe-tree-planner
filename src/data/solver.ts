@@ -262,6 +262,70 @@ export function solveSteinerTree(
     resultNodes.add(t)
   }
 
+  // Step 7.5: Include nearby would-like nodes
+  // For each would-like node not already in the result, BFS to find the
+  // shortest path to any node in the result tree. Include it if the detour
+  // costs at most MAX_DETOUR extra nodes.
+  const MAX_DETOUR = 3
+  for (const wantId of wouldLikeNodes) {
+    if (resultNodes.has(wantId)) continue
+    if (blockedNodes.has(wantId)) continue
+
+    // BFS from the would-like node toward the result tree
+    const visited = new Set<string>([wantId])
+    const prev = new Map<string, string>()
+    const queue: string[] = [wantId]
+    let found: string | null = null
+
+    while (queue.length > 0 && !found) {
+      const current = queue.shift()!
+      // Don't search further than MAX_DETOUR hops
+      let depth = 0
+      let walk: string | undefined = current
+      while (walk && walk !== wantId) {
+        depth++
+        walk = prev.get(walk)
+      }
+      if (depth >= MAX_DETOUR) continue
+
+      const neighbors = filteredAdj.get(current)
+      if (!neighbors) continue
+      for (const neighbor of neighbors) {
+        if (visited.has(neighbor)) continue
+        visited.add(neighbor)
+        prev.set(neighbor, current)
+        if (resultNodes.has(neighbor)) {
+          found = neighbor
+          break
+        }
+        queue.push(neighbor)
+      }
+    }
+
+    if (found) {
+      // Reconstruct path from would-like node to the result tree
+      const detourPath: string[] = []
+      let node: string | undefined = found
+      while (node && node !== wantId) {
+        if (!resultNodes.has(node)) detourPath.push(node)
+        node = prev.get(node)
+      }
+      detourPath.push(wantId)
+
+      // Count how many NEW (non-free) nodes the detour adds
+      let detourCost = 0
+      for (const id of detourPath) {
+        if (!allocatedNodes.has(id) && !resultNodes.has(id)) detourCost++
+      }
+
+      if (detourCost <= MAX_DETOUR) {
+        for (const id of detourPath) {
+          resultNodes.add(id)
+        }
+      }
+    }
+  }
+
   // Step 8: Calculate cost (nodes not already allocated, excluding class start)
   let cost = 0
   for (const nodeId of resultNodes) {
