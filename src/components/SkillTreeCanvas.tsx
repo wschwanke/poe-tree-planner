@@ -550,8 +550,8 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
         />
       </div>
 
-      {/* Top bar right: settings, help */}
-      <div className="absolute top-3 right-3 z-40 flex items-center gap-2">
+      {/* Top bar right: settings, help — offset when side panel is visible */}
+      <div className={`absolute top-3 z-40 flex items-center gap-2 ${selectedClass !== null ? 'right-[21.5rem]' : 'right-3'}`}>
         <SettingsDialog />
         <HelpMenu />
       </div>
