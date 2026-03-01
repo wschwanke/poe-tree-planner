@@ -9,6 +9,7 @@ export interface NodeClickEvent {
   nodeId: string
   ctrlKey: boolean
   altKey: boolean
+  button: number
 }
 
 interface UseCanvasInteractionProps {
@@ -31,11 +32,13 @@ export function useCanvasInteraction({
   const isDragging = useRef(false)
   const dragStart = useRef({ x: 0, y: 0 })
   const totalDrag = useRef(0)
+  const mouseButton = useRef(0)
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     isDragging.current = true
     dragStart.current = { x: e.clientX, y: e.clientY }
     totalDrag.current = 0
+    mouseButton.current = e.button
   }, [])
 
   const handleMouseMove = useCallback(
@@ -67,7 +70,7 @@ export function useCanvasInteraction({
         const y = e.clientY - rect.top
         const hit = hitTest(x, y, viewport, processedNodes, spatialIndex)
         if (hit) {
-          onNodeClick({ nodeId: hit, ctrlKey: e.ctrlKey, altKey: e.altKey })
+          onNodeClick({ nodeId: hit, ctrlKey: e.ctrlKey, altKey: e.altKey, button: mouseButton.current })
         }
       }
       isDragging.current = false
@@ -80,10 +83,15 @@ export function useCanvasInteraction({
     onHover(null)
   }, [onHover])
 
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+  }, [])
+
   return {
     handleMouseDown,
     handleMouseMove,
     handleMouseUp,
     handleMouseLeave,
+    handleContextMenu,
   }
 }

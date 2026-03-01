@@ -90,7 +90,7 @@ export function PlanningToolbar({ adjacency, processedNodes }: PlanningToolbarPr
           {wouldLikeNodes.size > 0 && (
             <Badge
               variant="outline"
-              className="px-2 py-0.5 bg-amber-950/90 border-amber-700/50 text-amber-300 text-xs"
+              className="px-2 py-0.5 bg-blue-950/90 border-blue-700/50 text-blue-300 text-xs"
             >
               {wouldLikeNodes.size} want
             </Badge>

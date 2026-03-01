@@ -55,13 +55,15 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
   const handleCanvasNodeClick = useCallback(
     (event: NodeClickEvent) => {
       if (planningActive) {
-        const flag: PlanningFlag = event.ctrlKey
-          ? 'required'
-          : event.altKey
-            ? 'blocked'
-            : 'wouldLike'
+        const flag: PlanningFlag =
+          event.button === 2
+            ? 'required'
+            : event.altKey
+              ? 'blocked'
+              : 'wouldLike'
         toggleFlag(event.nodeId, flag)
       } else {
+        if (event.button === 2) return
         handleNodeClick(event.nodeId)
       }
     },
@@ -202,12 +204,13 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
     <div className="relative w-full h-full overflow-hidden">
       <canvas
         ref={canvasRef}
-        className={`absolute inset-0 ${planningActive ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'}`}
+        className={`absolute inset-0 ${hoveredNodeId ? 'cursor-pointer' : planningActive ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'}`}
         style={{ width: viewport.width, height: viewport.height }}
         onMouseDown={interaction.handleMouseDown}
         onMouseMove={interaction.handleMouseMove}
         onMouseUp={interaction.handleMouseUp}
         onMouseLeave={interaction.handleMouseLeave}
+        onContextMenu={interaction.handleContextMenu}
       />
 
       {/* Top bar: class selector + point counter + search */}

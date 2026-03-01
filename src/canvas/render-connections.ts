@@ -201,8 +201,7 @@ export function renderConnections(
   }
 
   // Draw hovered path preview: show the path that would be allocated
-  if (hoveredPath.length < 2) return
-
+  if (hoveredPath.length >= 2) {
   // Build set of edges in the hovered path for quick lookup
   const pathEdges = new Set<string>()
   for (let i = 0; i < hoveredPath.length - 1; i++) {
@@ -272,29 +271,30 @@ export function renderConnections(
     previewSegments.push({ type: 'line', x1: sx1, y1: sy1, x2: sx2, y2: sy2 })
   }
 
-  if (previewSegments.length === 0) return
+  if (previewSegments.length > 0) {
+    const activeStyle = CONNECTION_STYLES.active
+    const previewWidth = Math.max(activeStyle.minWidth, activeStyle.widthMultiplier * viewport.zoom)
 
-  const activeStyle = CONNECTION_STYLES.active
-  const previewWidth = Math.max(activeStyle.minWidth, activeStyle.widthMultiplier * viewport.zoom)
-
-  ctx.save()
-  ctx.strokeStyle = activeStyle.color
-  ctx.globalAlpha = 0.33
-  ctx.lineWidth = previewWidth
-  ctx.lineCap = 'round'
-  ctx.beginPath()
-  for (const seg of previewSegments) {
-    if (seg.type === 'line') {
-      ctx.moveTo(seg.x1, seg.y1)
-      ctx.lineTo(seg.x2, seg.y2)
-    } else {
-      const { cx, cy, radius, startAngle, endAngle, counterclockwise } = seg
-      ctx.moveTo(cx + radius * Math.cos(startAngle), cy + radius * Math.sin(startAngle))
-      ctx.arc(cx, cy, radius, startAngle, endAngle, counterclockwise)
+    ctx.save()
+    ctx.strokeStyle = activeStyle.color
+    ctx.globalAlpha = 0.33
+    ctx.lineWidth = previewWidth
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    for (const seg of previewSegments) {
+      if (seg.type === 'line') {
+        ctx.moveTo(seg.x1, seg.y1)
+        ctx.lineTo(seg.x2, seg.y2)
+      } else {
+        const { cx, cy, radius, startAngle, endAngle, counterclockwise } = seg
+        ctx.moveTo(cx + radius * Math.cos(startAngle), cy + radius * Math.sin(startAngle))
+        ctx.arc(cx, cy, radius, startAngle, endAngle, counterclockwise)
+      }
     }
+    ctx.stroke()
+    ctx.restore()
   }
-  ctx.stroke()
-  ctx.restore()
+  } // end hoveredPath.length >= 2
 
   // Draw solver preview connections
   if (solverPreview.size < 2) return
@@ -355,13 +355,14 @@ export function renderConnections(
 
   if (solverSegments.length === 0) return
 
-  const solverWidth = Math.max(activeStyle.minWidth, activeStyle.widthMultiplier * viewport.zoom)
+  const solverLineStyle = CONNECTION_STYLES.active
+  const solverWidth = Math.max(solverLineStyle.minWidth, solverLineStyle.widthMultiplier * viewport.zoom)
 
   // Glow pass
   ctx.save()
   ctx.strokeStyle = '#06b6d4'
   ctx.globalAlpha = 0.3
-  ctx.lineWidth = Math.max(activeStyle.minWidth * 2, 8 * viewport.zoom)
+  ctx.lineWidth = Math.max(solverLineStyle.minWidth * 2, 8 * viewport.zoom)
   ctx.lineCap = 'round'
   ctx.beginPath()
   for (const seg of solverSegments) {

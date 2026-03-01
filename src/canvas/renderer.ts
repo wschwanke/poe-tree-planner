@@ -45,6 +45,7 @@ export function render(
     rc.allocatedNodes,
     rc.data,
     rc.hoveredPath,
+    rc.solverPreview,
   )
 
   // 3. Nodes (frames + icons + class starts)

@@ -55,30 +55,50 @@ export function renderPlanningOverlays(
 
     // Would Like — dashed amber ring
     if (flags.wouldLike.has(id)) {
-      const spread = Math.max(3, 6 * viewport.zoom)
-      const lineW = Math.max(1.5, 2 * viewport.zoom)
-      const dash = Math.max(3, 4 * viewport.zoom)
+      const spread = Math.max(4, 8 * viewport.zoom)
+      const lineW = Math.max(3, 4 * viewport.zoom)
+      const dash = Math.max(4, 5 * viewport.zoom)
 
+      // Solid glow ring behind the dashed ring
       ctx.beginPath()
       ctx.arc(sx, sy, nodeRadius + spread, 0, Math.PI * 2)
-      ctx.strokeStyle = 'rgba(245, 158, 11, 0.5)'
+      ctx.strokeStyle = 'rgba(59, 130, 246, 0.3)'
+      ctx.lineWidth = Math.max(6, 10 * viewport.zoom)
+      ctx.stroke()
+
+      // Dashed ring
+      ctx.beginPath()
+      ctx.arc(sx, sy, nodeRadius + spread, 0, Math.PI * 2)
+      ctx.strokeStyle = 'rgba(96, 165, 250, 1)'
       ctx.lineWidth = lineW
       ctx.setLineDash([dash, dash])
+      ctx.shadowColor = 'rgba(96, 165, 250, 0.6)'
+      ctx.shadowBlur = Math.max(10, 16 * viewport.zoom)
       ctx.stroke()
       ctx.setLineDash([])
+      ctx.shadowColor = 'transparent'
+      ctx.shadowBlur = 0
     }
 
     // Required — green ring + glow + checkmark
     if (flags.required.has(id)) {
-      const spread = Math.max(3, 6 * viewport.zoom)
-      const lineW = Math.max(2, 3 * viewport.zoom)
+      const spread = Math.max(4, 8 * viewport.zoom)
+      const lineW = Math.max(3, 4 * viewport.zoom)
 
+      // Solid glow ring
       ctx.beginPath()
       ctx.arc(sx, sy, nodeRadius + spread, 0, Math.PI * 2)
-      ctx.strokeStyle = 'rgba(34, 197, 94, 0.8)'
+      ctx.strokeStyle = 'rgba(34, 197, 94, 0.3)'
+      ctx.lineWidth = Math.max(6, 10 * viewport.zoom)
+      ctx.stroke()
+
+      // Main ring
+      ctx.beginPath()
+      ctx.arc(sx, sy, nodeRadius + spread, 0, Math.PI * 2)
+      ctx.strokeStyle = 'rgba(34, 197, 94, 1)'
       ctx.lineWidth = lineW
-      ctx.shadowColor = 'rgba(34, 197, 94, 0.4)'
-      ctx.shadowBlur = Math.max(8, 12 * viewport.zoom)
+      ctx.shadowColor = 'rgba(34, 197, 94, 0.6)'
+      ctx.shadowBlur = Math.max(10, 16 * viewport.zoom)
       ctx.stroke()
       ctx.shadowColor = 'transparent'
       ctx.shadowBlur = 0
@@ -89,7 +109,7 @@ export function renderPlanningOverlays(
       ctx.moveTo(sx - iconSize * 0.5, sy)
       ctx.lineTo(sx - iconSize * 0.1, sy + iconSize * 0.45)
       ctx.lineTo(sx + iconSize * 0.55, sy - iconSize * 0.4)
-      ctx.strokeStyle = 'rgba(34, 197, 94, 0.9)'
+      ctx.strokeStyle = 'rgba(34, 197, 94, 1)'
       ctx.lineWidth = Math.max(3, 5 * viewport.zoom)
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
@@ -98,15 +118,23 @@ export function renderPlanningOverlays(
 
     // Blocked — red ring + glow + X
     if (flags.blocked.has(id)) {
-      const spread = Math.max(3, 6 * viewport.zoom)
-      const lineW = Math.max(2, 3 * viewport.zoom)
+      const spread = Math.max(4, 8 * viewport.zoom)
+      const lineW = Math.max(3, 4 * viewport.zoom)
 
+      // Solid glow ring
       ctx.beginPath()
       ctx.arc(sx, sy, nodeRadius + spread, 0, Math.PI * 2)
-      ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)'
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.3)'
+      ctx.lineWidth = Math.max(6, 10 * viewport.zoom)
+      ctx.stroke()
+
+      // Main ring
+      ctx.beginPath()
+      ctx.arc(sx, sy, nodeRadius + spread, 0, Math.PI * 2)
+      ctx.strokeStyle = 'rgba(239, 68, 68, 1)'
       ctx.lineWidth = lineW
-      ctx.shadowColor = 'rgba(239, 68, 68, 0.4)'
-      ctx.shadowBlur = Math.max(8, 12 * viewport.zoom)
+      ctx.shadowColor = 'rgba(239, 68, 68, 0.6)'
+      ctx.shadowBlur = Math.max(10, 16 * viewport.zoom)
       ctx.stroke()
       ctx.shadowColor = 'transparent'
       ctx.shadowBlur = 0
@@ -118,7 +146,7 @@ export function renderPlanningOverlays(
       ctx.lineTo(sx + xOff, sy + xOff)
       ctx.moveTo(sx + xOff, sy - xOff)
       ctx.lineTo(sx - xOff, sy + xOff)
-      ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)'
+      ctx.strokeStyle = 'rgba(239, 68, 68, 1)'
       ctx.lineWidth = Math.max(3, 5 * viewport.zoom)
       ctx.lineCap = 'round'
       ctx.stroke()
