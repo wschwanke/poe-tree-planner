@@ -25,12 +25,12 @@ interface ConnectionStyle {
 }
 
 const CONNECTION_STYLES: Record<ConnectionState, ConnectionStyle> = {
-  normal: { color: '#5a5247', widthMultiplier: 2, minWidth: 0.75, alpha: 0.6, glow: null },
-  intermediate: { color: '#8b7d5e', widthMultiplier: 2.5, minWidth: 1, alpha: 0.6, glow: null },
+  normal: { color: '#3d372a', widthMultiplier: 3, minWidth: 1.5, alpha: 0.7, glow: null },
+  intermediate: { color: '#3d372a', widthMultiplier: 3, minWidth: 1.5, alpha: 0.7, glow: null },
   active: {
     color: '#c8b074',
-    widthMultiplier: 3,
-    minWidth: 1.5,
+    widthMultiplier: 3.5,
+    minWidth: 2,
     alpha: 1.0,
     glow: { widthMultiplier: 8, alpha: 0.3 },
   },
@@ -169,10 +169,7 @@ export function renderConnections(
           ctx.lineTo(seg.x2, seg.y2)
         } else {
           const { cx, cy, radius, startAngle, endAngle, counterclockwise } = seg
-          ctx.moveTo(
-            cx + radius * Math.cos(startAngle),
-            cy + radius * Math.sin(startAngle),
-          )
+          ctx.moveTo(cx + radius * Math.cos(startAngle), cy + radius * Math.sin(startAngle))
           ctx.arc(cx, cy, radius, startAngle, endAngle, counterclockwise)
         }
       }
@@ -193,10 +190,7 @@ export function renderConnections(
         ctx.lineTo(seg.x2, seg.y2)
       } else {
         const { cx, cy, radius, startAngle, endAngle, counterclockwise } = seg
-        ctx.moveTo(
-          cx + radius * Math.cos(startAngle),
-          cy + radius * Math.sin(startAngle),
-        )
+        ctx.moveTo(cx + radius * Math.cos(startAngle), cy + radius * Math.sin(startAngle))
         ctx.arc(cx, cy, radius, startAngle, endAngle, counterclockwise)
       }
     }

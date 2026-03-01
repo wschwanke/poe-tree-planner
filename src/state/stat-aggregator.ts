@@ -6,12 +6,32 @@ export interface AggregatedStat {
   isKeystone: boolean
 }
 
+export interface MasteryStat {
+  masteryName: string
+  stats: string[]
+}
+
 const STAT_PATTERN = /^([+-]?\d+\.?\d*)(%?)\s+(.+)$/
+
+function parseStat(line: string, statMap: Map<string, number>, keystoneStats: string[]): void {
+  const trimmed = line.trim()
+  if (!trimmed) return
+  const match = trimmed.match(STAT_PATTERN)
+  if (match) {
+    const value = parseFloat(match[1])
+    const percent = match[2]
+    const desc = `${percent} ${match[3]}`.trim()
+    statMap.set(desc, (statMap.get(desc) ?? 0) + value)
+  } else {
+    keystoneStats.push(trimmed)
+  }
+}
 
 export function aggregateStats(
   allocatedNodes: Set<string>,
   processedNodes: Map<string, ProcessedNode>,
-): AggregatedStat[] {
+  selectedMasteryEffects?: Map<string, number>,
+): { stats: AggregatedStat[]; masteryStats: MasteryStat[] } {
   const statMap = new Map<string, number>()
   const keystoneStats: string[] = []
 
@@ -20,21 +40,28 @@ export function aggregateStats(
     if (!pn || !pn.node.stats) continue
 
     for (const stat of pn.node.stats) {
-      // Split multi-line stats
-      const lines = stat.split('\n')
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed) continue
+      for (const line of stat.split('\n')) {
+        parseStat(line, statMap, keystoneStats)
+      }
+    }
+  }
 
-        const match = trimmed.match(STAT_PATTERN)
-        if (match) {
-          const value = parseFloat(match[1])
-          const percent = match[2]
-          const desc = `${percent} ${match[3]}`.trim()
-          statMap.set(desc, (statMap.get(desc) ?? 0) + value)
-        } else {
-          // Non-numeric stat (keystone)
-          keystoneStats.push(trimmed)
+  // Collect mastery effect stats separately for display
+  const masteryStats: MasteryStat[] = []
+  if (selectedMasteryEffects) {
+    for (const [nodeId, effectIndex] of selectedMasteryEffects) {
+      const pn = processedNodes.get(nodeId)
+      if (!pn?.node.masteryEffects) continue
+      const effect = pn.node.masteryEffects[effectIndex]
+      if (!effect) continue
+      masteryStats.push({
+        masteryName: pn.node.name ?? 'Mastery',
+        stats: effect.stats,
+      })
+      // Also add to numeric aggregation
+      for (const stat of effect.stats) {
+        for (const line of stat.split('\n')) {
+          parseStat(line, statMap, keystoneStats)
         }
       }
     }
@@ -53,7 +80,7 @@ export function aggregateStats(
     result.push({ description: stat, value: null, isKeystone: true })
   }
 
-  return result
+  return { stats: result, masteryStats }
 }
 
 export function formatStatValue(stat: AggregatedStat): string {

@@ -4,7 +4,8 @@ import { useAllocation } from '@/hooks/useAllocation'
 import { useCanvasInteraction } from '@/hooks/useCanvasInteraction'
 import type { SkillTreeContext } from '@/hooks/useSkillTree'
 import { useViewport } from '@/hooks/useViewport'
-import { ClassSelectionDialog } from './ClassSelectionDialog'
+import { ClassSelector } from './ClassSelectionDialog'
+import { MasterySelectionDialog } from './MasterySelectionDialog'
 import { NodeTooltip } from './NodeTooltip'
 import { PointCounter } from './PointCounter'
 import { StatSummaryPanel } from './StatSummaryPanel'
@@ -19,8 +20,19 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
   const { viewport, handlePan, handleCenterOn } = useViewport(canvasRef)
   const totalPoints = data.points.totalPoints
 
-  const { state, canAllocateNodes, pointsUsed, selectClass, handleNodeClick, setHovered, reset } =
-    useAllocation(processedNodes, adjacency, totalPoints)
+  const {
+    state,
+    canAllocateNodes,
+    pointsUsed,
+    selectClass,
+    handleNodeClick,
+    setHovered,
+    reset,
+    masteryDialogNodeId,
+    handleMasterySelect,
+    handleMasteryUnallocate,
+    closeMasteryDialog,
+  } = useAllocation(processedNodes, adjacency, totalPoints)
 
   const interaction = useCanvasInteraction({
     processedNodes,
@@ -34,6 +46,7 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
   const handleClassSelect = useCallback(
     (classIndex: number, startNodeId: string) => {
       selectClass(classIndex, startNodeId)
+      localStorage.setItem('poe-tree-selected-class', String(classIndex))
       const pn = processedNodes.get(startNodeId)
       if (pn) {
         handleCenterOn(pn.worldX, pn.worldY, 0.35)
@@ -41,6 +54,21 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
     },
     [selectClass, processedNodes, handleCenterOn],
   )
+
+  // Restore class selection from localStorage on mount
+  useEffect(() => {
+    if (state.selectedClass !== null) return
+    const saved = localStorage.getItem('poe-tree-selected-class')
+    if (saved === null) return
+    const classIndex = Number(saved)
+    // Find the start node for this class
+    for (const [id, pn] of processedNodes) {
+      if (pn.node.classStartIndex === classIndex) {
+        selectClass(classIndex, id)
+        return
+      }
+    }
+  }, [processedNodes, selectClass, state.selectedClass])
 
   const handleReset = useCallback(() => {
     reset()
@@ -86,6 +114,13 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
 
   const hoveredNode = state.hoveredNodeId ? processedNodes.get(state.hoveredNodeId) : null
 
+  const masteryDialogNode = masteryDialogNodeId
+    ? (processedNodes.get(masteryDialogNodeId) ?? null)
+    : null
+  const currentMasteryEffect = masteryDialogNodeId
+    ? (state.selectedMasteryEffects.get(masteryDialogNodeId) ?? null)
+    : null
+
   return (
     <div className="relative w-full h-full overflow-hidden">
       <canvas
@@ -98,12 +133,25 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
         onMouseLeave={interaction.handleMouseLeave}
       />
 
-      {/* Class selection dialog */}
-      <ClassSelectionDialog
-        open={state.selectedClass === null}
-        data={data}
-        processedNodes={processedNodes}
-        onSelect={handleClassSelect}
+      {/* Class selector dropdown */}
+      <div className="absolute top-3 left-3 z-10">
+        <ClassSelector
+          data={data}
+          processedNodes={processedNodes}
+          selectedClass={state.selectedClass}
+          onSelect={handleClassSelect}
+        />
+      </div>
+
+      {/* Mastery selection dialog */}
+      <MasterySelectionDialog
+        open={masteryDialogNodeId !== null}
+        node={masteryDialogNode}
+        currentEffectIndex={currentMasteryEffect}
+        canAffordPoint={pointsUsed < totalPoints || currentMasteryEffect !== null}
+        onSelectEffect={handleMasterySelect}
+        onUnallocate={handleMasteryUnallocate}
+        onClose={closeMasteryDialog}
       />
 
       {/* Point counter */}
@@ -116,6 +164,7 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
             node={hoveredNode}
             viewport={viewport}
             allocated={state.allocatedNodes.has(hoveredNode.id)}
+            selectedMasteryEffects={state.selectedMasteryEffects}
           />
         </div>
       )}
@@ -125,6 +174,7 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
         <StatSummaryPanel
           allocatedNodes={state.allocatedNodes}
           processedNodes={processedNodes}
+          selectedMasteryEffects={state.selectedMasteryEffects}
           pointsUsed={pointsUsed}
           totalPoints={totalPoints}
           onReset={handleReset}

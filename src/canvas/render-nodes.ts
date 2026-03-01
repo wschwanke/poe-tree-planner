@@ -26,11 +26,11 @@ const FRAME_MAP: Record<string, { unallocated: string; canAllocate: string; allo
 }
 
 const ICON_SCALE: Record<NodeType, number> = {
-  normal: 0.85,
-  notable: 0.85,
-  keystone: 0.84,
+  normal: 1.0,
+  notable: 1.0,
+  keystone: 1.0,
   mastery: 1.0,
-  jewelSocket: 0.85,
+  jewelSocket: 1.0,
   classStart: 1.0,
 }
 
@@ -106,7 +106,38 @@ export function renderNodes(
     const isCanAllocate = canAllocateNodes.has(id)
     const isHovered = id === hoveredNodeId
 
-    // Draw frame
+    // Draw icon first (behind the frame)
+    // Mastery nodes use different icon paths per state:
+    //   allocated:   node.activeIcon → 'masteryActiveSelected' (bright)
+    //   unallocated: node.icon → 'mastery' (muted via reduced alpha)
+    if (pn.type === 'mastery') {
+      const iconScale = sprites.getScaleFactor(viewport.zoom) * ICON_SCALE[pn.type]
+      if (isAllocated && pn.node.activeIcon) {
+        sprites.drawSprite(
+          ctx,
+          'masteryActiveSelected',
+          pn.node.activeIcon,
+          sx,
+          sy,
+          viewport.zoom,
+          iconScale,
+        )
+      } else if (pn.node.icon) {
+        ctx.save()
+        ctx.globalAlpha = 0.4
+        sprites.drawSprite(ctx, 'mastery', pn.node.icon, sx, sy, viewport.zoom, iconScale)
+        ctx.restore()
+      }
+    } else {
+      const iconPath = pn.node.icon
+      if (iconPath) {
+        const category = getIconCategory(pn.type, isAllocated)
+        const iconScale = sprites.getScaleFactor(viewport.zoom) * ICON_SCALE[pn.type]
+        sprites.drawSprite(ctx, category, iconPath, sx, sy, viewport.zoom, iconScale)
+      }
+    }
+
+    // Draw frame on top to mask square icon edges
     const frameInfo = FRAME_MAP[pn.type]
     if (frameInfo) {
       const frameKey = isAllocated
@@ -115,14 +146,6 @@ export function renderNodes(
           ? frameInfo.canAllocate
           : frameInfo.unallocated
       sprites.drawSprite(ctx, 'frame', frameKey, sx, sy, viewport.zoom)
-    }
-
-    // Draw icon (scaled down to fit inside the frame border)
-    const iconPath = pn.node.icon
-    if (iconPath) {
-      const category = getIconCategory(pn.type, isAllocated)
-      const iconScale = sprites.getScaleFactor(viewport.zoom) * ICON_SCALE[pn.type]
-      sprites.drawSprite(ctx, category, iconPath, sx, sy, viewport.zoom, iconScale)
     }
 
     // Hover highlight

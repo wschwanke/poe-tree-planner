@@ -57,6 +57,9 @@ export interface SkillNode {
   skill?: number
   name?: string
   icon?: string
+  inactiveIcon?: string
+  activeIcon?: string
+  activeEffectImage?: string
   ascendancyName?: string
   isBloodline?: boolean
   isKeystone?: boolean

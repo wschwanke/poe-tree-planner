@@ -9,6 +9,7 @@ import type { ProcessedNode } from '@/types/skill-tree'
 interface StatSummaryPanelProps {
   allocatedNodes: Set<string>
   processedNodes: Map<string, ProcessedNode>
+  selectedMasteryEffects: Map<string, number>
   pointsUsed: number
   totalPoints: number
   onReset: () => void
@@ -17,11 +18,16 @@ interface StatSummaryPanelProps {
 export function StatSummaryPanel({
   allocatedNodes,
   processedNodes,
+  selectedMasteryEffects,
   pointsUsed,
   totalPoints,
   onReset,
 }: StatSummaryPanelProps) {
-  const stats = aggregateStats(allocatedNodes, processedNodes)
+  const { stats, masteryStats } = aggregateStats(
+    allocatedNodes,
+    processedNodes,
+    selectedMasteryEffects,
+  )
   const numericStats = stats.filter((s) => !s.isKeystone)
   const keystoneStats = stats.filter((s) => s.isKeystone)
 
@@ -41,7 +47,7 @@ export function StatSummaryPanel({
         <Separator className="bg-stone-800" />
         <ScrollArea className="flex-1 min-h-0">
           <CardContent className="p-3 space-y-0.5">
-            {stats.length === 0 && (
+            {stats.length === 0 && masteryStats.length === 0 && (
               <p className="text-xs text-stone-600 text-center py-4">Allocate nodes to see stats</p>
             )}
             {numericStats.map((stat, i) => (
@@ -57,6 +63,24 @@ export function StatSummaryPanel({
                 {stat.description}
               </p>
             ))}
+            {masteryStats.length > 0 && (
+              <>
+                <Separator className="bg-stone-800 my-2" />
+                <p className="text-[10px] text-purple-400 font-semibold uppercase tracking-wide pb-1">
+                  Masteries
+                </p>
+                {masteryStats.map((ms, i) => (
+                  <div key={i} className="pb-1">
+                    <p className="text-[10px] text-stone-500">{ms.masteryName}</p>
+                    {ms.stats.map((stat, j) => (
+                      <p key={j} className="text-xs text-purple-300 leading-relaxed">
+                        {stat}
+                      </p>
+                    ))}
+                  </div>
+                ))}
+              </>
+            )}
           </CardContent>
         </ScrollArea>
         <Separator className="bg-stone-800" />

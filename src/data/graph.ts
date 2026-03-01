@@ -4,8 +4,8 @@ import type { NodeType, ProcessedNode, SkillTreeData } from '@/types/skill-tree'
 // PoE uses irregular spacing for these orbits; all others use uniform spacing.
 const ORBIT_ANGLES_16 = [0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330]
 const ORBIT_ANGLES_40 = [
-  0, 10, 20, 30, 40, 45, 50, 60, 70, 80, 90, 100, 110, 120, 130, 135, 140, 150, 160, 170, 180,
-  190, 200, 210, 220, 225, 230, 240, 250, 260, 270, 280, 290, 300, 310, 315, 320, 330, 340, 350,
+  0, 10, 20, 30, 40, 45, 50, 60, 70, 80, 90, 100, 110, 120, 130, 135, 140, 150, 160, 170, 180, 190,
+  200, 210, 220, 225, 230, 240, 250, 260, 270, 280, 290, 300, 310, 315, 320, 330, 340, 350,
 ]
 
 const DEG_TO_RAD = Math.PI / 180
@@ -69,14 +69,18 @@ export function buildAdjacencyGraph(
 ): Map<string, Set<string>> {
   const adj = new Map<string, Set<string>>()
 
-  for (const [id] of processedNodes) {
+  for (const [id, pn] of processedNodes) {
+    // Mastery nodes are not part of the pathing/connectivity graph
+    if (pn.node.isMastery) continue
     adj.set(id, new Set())
   }
 
   for (const [id, pn] of processedNodes) {
+    if (pn.node.isMastery) continue
     const neighbors = adj.get(id)!
     for (const outId of pn.node.out) {
-      if (processedNodes.has(outId)) {
+      const outPn = processedNodes.get(outId)
+      if (outPn && !outPn.node.isMastery) {
         neighbors.add(outId)
         let targetNeighbors = adj.get(outId)
         if (!targetNeighbors) {
@@ -87,7 +91,8 @@ export function buildAdjacencyGraph(
       }
     }
     for (const inId of pn.node.in) {
-      if (processedNodes.has(inId)) {
+      const inPn = processedNodes.get(inId)
+      if (inPn && !inPn.node.isMastery) {
         neighbors.add(inId)
         let targetNeighbors = adj.get(inId)
         if (!targetNeighbors) {

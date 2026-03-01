@@ -2,6 +2,32 @@ import type { SpriteManager } from '@/data/sprite-manager'
 import type { ProcessedNode, SkillTreeData, ViewportState } from '@/types/skill-tree'
 import { isInView, worldToScreen } from './viewport'
 
+/** Draw a group background sprite with 1px top inset to prevent
+ *  image smoothing from sampling adjacent sprites in the sheet. */
+function drawGroupSprite(
+  ctx: CanvasRenderingContext2D,
+  sprites: SpriteManager,
+  coordKey: string,
+  dx: number,
+  dy: number,
+  zoom: number,
+): boolean {
+  const coord = sprites.getSpriteCoord('groupBackground', coordKey, zoom)
+  const image = sprites.getSpriteImage('groupBackground', zoom)
+  if (!coord || !image) return false
+
+  const scaleFactor = sprites.getScaleFactor(zoom)
+  const srcX = coord.x
+  const srcY = coord.y + 1
+  const srcW = coord.w
+  const srcH = coord.h - 1
+  const dw = srcW * scaleFactor
+  const dh = srcH * scaleFactor
+
+  ctx.drawImage(image, srcX, srcY, srcW, srcH, dx - dw / 2, dy - dh / 2, dw, dh)
+  return true
+}
+
 export function renderGroupBackgrounds(
   ctx: CanvasRenderingContext2D,
   data: SkillTreeData,
@@ -29,25 +55,36 @@ export function renderGroupBackgrounds(
       const image = sprites.getSpriteImage('groupBackground', viewport.zoom)
       if (coord && image) {
         const scaleFactor = sprites.getScaleFactor(viewport.zoom)
-        const dw = coord.w * scaleFactor
-        const dh = coord.h * scaleFactor
+
+        // Inset source rect by 1px on top to avoid sampling adjacent
+        // sprites in the sheet when the canvas applies image smoothing
+        const srcX = coord.x
+        const srcY = coord.y + 1
+        const srcW = coord.w
+        const srcH = coord.h - 1
+
+        const dw = srcW * scaleFactor
+        const dh = srcH * scaleFactor
+        const cx = Math.round(sx)
+        const cy = Math.round(sy)
 
         // Draw top half: bottom edge at center Y
-        ctx.drawImage(image, coord.x, coord.y, coord.w, coord.h, sx - dw / 2, sy - dh, dw, dh)
+        ctx.drawImage(image, srcX, srcY, srcW, srcH, cx - dw / 2, cy - dh, dw, dh)
 
         // Draw mirrored bottom half: flip vertically around center Y
         ctx.save()
-        ctx.translate(sx, sy)
+        ctx.translate(cx, cy)
         ctx.scale(1, -1)
-        ctx.drawImage(image, coord.x, coord.y, coord.w, coord.h, -dw / 2, -dh, dw, dh)
+        ctx.drawImage(image, srcX, srcY, srcW, srcH, -dw / 2, -dh, dw, dh)
         ctx.restore()
       }
     } else {
-      const drawn = sprites.drawSprite(ctx, 'groupBackground', coordKey, sx, sy, viewport.zoom)
+      // Draw manually with 1px top inset to avoid sampling adjacent
+      // sprites in the sheet when the canvas applies image smoothing
+      const drawn = drawGroupSprite(ctx, sprites, coordKey, sx, sy, viewport.zoom)
       if (!drawn) {
-        // Try alt variant
         const altKey = `${coordKey.replace('PSGroupBackground', 'GroupBackground')}Alt`
-        sprites.drawSprite(ctx, 'groupBackground', altKey, sx, sy, viewport.zoom)
+        drawGroupSprite(ctx, sprites, altKey, sx, sy, viewport.zoom)
       }
     }
   }

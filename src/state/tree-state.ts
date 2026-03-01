@@ -1,16 +1,25 @@
 import { getConnectedComponent } from '@/data/graph'
+import type { ProcessedNode } from '@/types/skill-tree'
 
 export interface TreeState {
   selectedClass: number | null
   classStartNodeId: string | null
   allocatedNodes: Set<string>
   hoveredNodeId: string | null
+  selectedMasteryEffects: Map<string, number>
 }
 
 export type TreeAction =
   | { type: 'SELECT_CLASS'; classIndex: number; startNodeId: string }
   | { type: 'ALLOCATE_PATH'; nodeIds: string[] }
-  | { type: 'UNALLOCATE'; nodeId: string; adjacency: Map<string, Set<string>> }
+  | {
+      type: 'UNALLOCATE'
+      nodeId: string
+      adjacency: Map<string, Set<string>>
+      processedNodes: Map<string, ProcessedNode>
+    }
+  | { type: 'ALLOCATE_MASTERY'; nodeId: string; effectIndex: number }
+  | { type: 'UNALLOCATE_MASTERY'; nodeId: string }
   | { type: 'SET_HOVERED'; nodeId: string | null }
   | { type: 'RESET' }
 
@@ -19,6 +28,7 @@ export const initialTreeState: TreeState = {
   classStartNodeId: null,
   allocatedNodes: new Set(),
   hoveredNodeId: null,
+  selectedMasteryEffects: new Map(),
 }
 
 export function treeReducer(state: TreeState, action: TreeAction): TreeState {
@@ -32,6 +42,7 @@ export function treeReducer(state: TreeState, action: TreeAction): TreeState {
         classStartNodeId: action.startNodeId,
         allocatedNodes: allocated,
         hoveredNodeId: null,
+        selectedMasteryEffects: new Map(),
       }
     }
 
@@ -49,24 +60,83 @@ export function treeReducer(state: TreeState, action: TreeAction): TreeState {
       const newAllocated = new Set(state.allocatedNodes)
       newAllocated.delete(action.nodeId)
 
-      // Find connected component from class start
+      let connected = newAllocated
       if (state.classStartNodeId) {
-        const connected = getConnectedComponent(
-          state.classStartNodeId,
-          action.adjacency,
-          newAllocated,
-        )
-        return { ...state, allocatedNodes: connected }
+        connected = getConnectedComponent(state.classStartNodeId, action.adjacency, newAllocated)
       }
 
-      return { ...state, allocatedNodes: newAllocated }
+      // Auto-remove masteries whose group has no remaining allocated notables
+      const newMasteryEffects = new Map(state.selectedMasteryEffects)
+      for (const [masteryId] of state.selectedMasteryEffects) {
+        if (!connected.has(masteryId)) {
+          newMasteryEffects.delete(masteryId)
+          continue
+        }
+        const masteryNode = action.processedNodes.get(masteryId)
+        if (!masteryNode) continue
+        const groupId = masteryNode.node.group
+        let hasAllocatedNotable = false
+        for (const nodeId of connected) {
+          if (nodeId === masteryId) continue
+          const pn = action.processedNodes.get(nodeId)
+          if (pn && pn.node.group === groupId && pn.node.isNotable) {
+            hasAllocatedNotable = true
+            break
+          }
+        }
+        if (!hasAllocatedNotable) {
+          connected.delete(masteryId)
+          newMasteryEffects.delete(masteryId)
+        }
+      }
+
+      return {
+        ...state,
+        allocatedNodes: connected,
+        selectedMasteryEffects: newMasteryEffects,
+      }
+    }
+
+    case 'ALLOCATE_MASTERY': {
+      const newAllocated = new Set(state.allocatedNodes)
+      newAllocated.add(action.nodeId)
+      const newEffects = new Map(state.selectedMasteryEffects)
+      newEffects.set(action.nodeId, action.effectIndex)
+      return {
+        ...state,
+        allocatedNodes: newAllocated,
+        selectedMasteryEffects: newEffects,
+      }
+    }
+
+    case 'UNALLOCATE_MASTERY': {
+      const newAllocated = new Set(state.allocatedNodes)
+      newAllocated.delete(action.nodeId)
+      const newEffects = new Map(state.selectedMasteryEffects)
+      newEffects.delete(action.nodeId)
+      return {
+        ...state,
+        allocatedNodes: newAllocated,
+        selectedMasteryEffects: newEffects,
+      }
     }
 
     case 'SET_HOVERED':
       return { ...state, hoveredNodeId: action.nodeId }
 
-    case 'RESET':
+    case 'RESET': {
+      if (state.classStartNodeId) {
+        const allocated = new Set<string>()
+        allocated.add(state.classStartNodeId)
+        return {
+          ...initialTreeState,
+          selectedClass: state.selectedClass,
+          classStartNodeId: state.classStartNodeId,
+          allocatedNodes: allocated,
+        }
+      }
       return { ...initialTreeState }
+    }
 
     default:
       return state

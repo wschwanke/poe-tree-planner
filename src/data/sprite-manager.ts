@@ -97,6 +97,7 @@ export class SpriteManager {
       'mastery',
       'masteryConnected',
       'masteryInactive',
+      'masteryActiveSelected',
       'jewel',
     ]
     for (const cat of categories) {
