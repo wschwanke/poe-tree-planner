@@ -4,7 +4,6 @@ import { isInView, worldToScreen } from './viewport'
 
 export interface PlanningFlags {
   required: Set<string>
-  wouldLike: Set<string>
   blocked: Set<string>
 }
 
@@ -16,8 +15,7 @@ export function renderPlanningOverlays(
   solverPreview: Set<string>,
   allocatedNodes: Set<string>,
 ): void {
-  const hasFlags =
-    flags.required.size > 0 || flags.wouldLike.size > 0 || flags.blocked.size > 0
+  const hasFlags = flags.required.size > 0 || flags.blocked.size > 0
   const hasPreview = solverPreview.size > 0
 
   if (!hasFlags && !hasPreview) return
@@ -36,7 +34,6 @@ export function renderPlanningOverlays(
       solverPreview.has(id) &&
       !allocatedNodes.has(id) &&
       !flags.required.has(id) &&
-      !flags.wouldLike.has(id) &&
       !flags.blocked.has(id)
     ) {
       const spread = Math.max(3, 6 * viewport.zoom)
@@ -49,33 +46,6 @@ export function renderPlanningOverlays(
       ctx.shadowColor = 'rgba(6, 182, 212, 0.3)'
       ctx.shadowBlur = Math.max(6, 10 * viewport.zoom)
       ctx.stroke()
-      ctx.shadowColor = 'transparent'
-      ctx.shadowBlur = 0
-    }
-
-    // Would Like — dashed amber ring
-    if (flags.wouldLike.has(id)) {
-      const spread = Math.max(4, 8 * viewport.zoom)
-      const lineW = Math.max(3, 4 * viewport.zoom)
-      const dash = Math.max(4, 5 * viewport.zoom)
-
-      // Solid glow ring behind the dashed ring
-      ctx.beginPath()
-      ctx.arc(sx, sy, nodeRadius + spread, 0, Math.PI * 2)
-      ctx.strokeStyle = 'rgba(59, 130, 246, 0.3)'
-      ctx.lineWidth = Math.max(6, 10 * viewport.zoom)
-      ctx.stroke()
-
-      // Dashed ring
-      ctx.beginPath()
-      ctx.arc(sx, sy, nodeRadius + spread, 0, Math.PI * 2)
-      ctx.strokeStyle = 'rgba(96, 165, 250, 1)'
-      ctx.lineWidth = lineW
-      ctx.setLineDash([dash, dash])
-      ctx.shadowColor = 'rgba(96, 165, 250, 0.6)'
-      ctx.shadowBlur = Math.max(10, 16 * viewport.zoom)
-      ctx.stroke()
-      ctx.setLineDash([])
       ctx.shadowColor = 'transparent'
       ctx.shadowBlur = 0
     }

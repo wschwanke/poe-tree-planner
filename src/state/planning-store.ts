@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type PlanningFlag = 'required' | 'wouldLike' | 'blocked'
+export type PlanningFlag = 'required' | 'blocked'
 
 export type SolverStatus = 'idle' | 'solved' | 'error'
 
@@ -8,7 +8,6 @@ interface PlanningState {
   active: boolean
 
   requiredNodes: Set<string>
-  wouldLikeNodes: Set<string>
   blockedNodes: Set<string>
 
   solverPreview: Set<string>
@@ -29,7 +28,6 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
   active: false,
 
   requiredNodes: new Set<string>(),
-  wouldLikeNodes: new Set<string>(),
   blockedNodes: new Set<string>(),
 
   solverPreview: new Set<string>(),
@@ -46,16 +44,14 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
   },
 
   toggleFlag(nodeId, flag) {
-    const { requiredNodes, wouldLikeNodes, blockedNodes } = get()
+    const { requiredNodes, blockedNodes } = get()
 
     const newRequired = new Set(requiredNodes)
-    const newWouldLike = new Set(wouldLikeNodes)
     const newBlocked = new Set(blockedNodes)
 
     // Check if node already has this flag — toggle off
     const flagSets: Record<PlanningFlag, Set<string>> = {
       required: newRequired,
-      wouldLike: newWouldLike,
       blocked: newBlocked,
     }
 
@@ -65,7 +61,6 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
     } else {
       // Remove from all other flags first
       newRequired.delete(nodeId)
-      newWouldLike.delete(nodeId)
       newBlocked.delete(nodeId)
       // Add to the requested flag
       flagSets[flag].add(nodeId)
@@ -73,7 +68,6 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
 
     set({
       requiredNodes: newRequired,
-      wouldLikeNodes: newWouldLike,
       blockedNodes: newBlocked,
       // Clear solver preview when flags change
       solverPreview: new Set<string>(),
@@ -86,7 +80,7 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
   clearFlags() {
     set({
       requiredNodes: new Set<string>(),
-      wouldLikeNodes: new Set<string>(),
+
       blockedNodes: new Set<string>(),
       solverPreview: new Set<string>(),
       solverStatus: 'idle',
@@ -117,7 +111,7 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
     set({
       active: false,
       requiredNodes: new Set<string>(),
-      wouldLikeNodes: new Set<string>(),
+
       blockedNodes: new Set<string>(),
       solverPreview: new Set<string>(),
       solverStatus: 'idle',

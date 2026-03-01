@@ -42,8 +42,7 @@ export const KEYBIND_SECTIONS: KeybindSection[] = [
     binds: [
       { keys: ['P'], description: 'Toggle planning mode' },
       { keys: ['Left Click'], description: 'Mark node as required' },
-      { keys: ['Right Click'], description: 'Mark node as "would like"' },
-      { keys: ['Ctrl', 'Click'], description: 'Mark node as blocked' },
+      { keys: ['Right Click'], description: 'Mark node as blocked' },
     ],
   },
   {

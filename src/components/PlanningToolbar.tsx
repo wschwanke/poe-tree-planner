@@ -14,7 +14,6 @@ interface PlanningToolbarProps {
 export function PlanningToolbar({ adjacency, processedNodes }: PlanningToolbarProps) {
   const active = usePlanningStore((s) => s.active)
   const requiredNodes = usePlanningStore((s) => s.requiredNodes)
-  const wouldLikeNodes = usePlanningStore((s) => s.wouldLikeNodes)
   const blockedNodes = usePlanningStore((s) => s.blockedNodes)
   const solverPreview = usePlanningStore((s) => s.solverPreview)
   const solverStatus = usePlanningStore((s) => s.solverStatus)
@@ -34,7 +33,6 @@ export function PlanningToolbar({ adjacency, processedNodes }: PlanningToolbarPr
     const result = solveSteinerTree(
       classStartNodeId,
       requiredNodes,
-      wouldLikeNodes,
       blockedNodes,
       adjacency,
       allocatedNodes,
@@ -49,7 +47,6 @@ export function PlanningToolbar({ adjacency, processedNodes }: PlanningToolbarPr
   }, [
     classStartNodeId,
     requiredNodes,
-    wouldLikeNodes,
     blockedNodes,
     adjacency,
     allocatedNodes,
@@ -85,14 +82,6 @@ export function PlanningToolbar({ adjacency, processedNodes }: PlanningToolbarPr
               className="px-2 py-0.5 bg-green-950/90 border-green-700/50 text-green-300 text-xs"
             >
               {requiredNodes.size} req
-            </Badge>
-          )}
-          {wouldLikeNodes.size > 0 && (
-            <Badge
-              variant="outline"
-              className="px-2 py-0.5 bg-blue-950/90 border-blue-700/50 text-blue-300 text-xs"
-            >
-              {wouldLikeNodes.size} want
             </Badge>
           )}
           {blockedNodes.size > 0 && (
@@ -133,7 +122,7 @@ export function PlanningToolbar({ adjacency, processedNodes }: PlanningToolbarPr
             </Badge>
           )}
 
-          {(requiredNodes.size > 0 || wouldLikeNodes.size > 0 || blockedNodes.size > 0) && (
+          {(requiredNodes.size > 0 || blockedNodes.size > 0) && (
             <Button
               variant="ghost"
               size="sm"

@@ -53,6 +53,13 @@ export interface GroupBackground {
   isHalfImage?: boolean
 }
 
+export interface ExpansionJewel {
+  size: number // 0=small, 1=medium, 2=large
+  index: number
+  proxy: string
+  parent?: string
+}
+
 export interface SkillNode {
   skill?: number
   name?: string
@@ -70,6 +77,7 @@ export interface SkillNode {
   isMultipleChoice?: boolean
   isMultipleChoiceOption?: boolean
   classStartIndex?: number
+  expansionJewel?: ExpansionJewel
   stats?: string[]
   reminderText?: string[]
   flavourText?: string[]

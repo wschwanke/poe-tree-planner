@@ -2,6 +2,7 @@ import { worldToScreen } from '@/canvas/viewport'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import type { ClusterJewelConfig } from '@/types/cluster-jewel'
 import type { CharacterClass, ProcessedNode, ViewportState } from '@/types/skill-tree'
 
 interface NodeTooltipProps {
@@ -10,6 +11,7 @@ interface NodeTooltipProps {
   allocated: boolean
   selectedMasteryEffects?: Map<string, number>
   classes?: CharacterClass[]
+  clusterJewels?: Map<string, ClusterJewelConfig>
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -36,6 +38,7 @@ export function NodeTooltip({
   allocated,
   selectedMasteryEffects,
   classes,
+  clusterJewels,
 }: NodeTooltipProps) {
   const [sx, sy] = worldToScreen(node.worldX, node.worldY, viewport)
 
@@ -70,6 +73,14 @@ export function NodeTooltip({
             </Badge>
           </div>
           {allocated && <span className="text-xs text-amber-400">Allocated</span>}
+          {allocated && clusterJewels?.has(node.id) && (
+            <span className="text-xs text-teal-400">
+              {clusterJewels.get(node.id)!.size.charAt(0).toUpperCase() + clusterJewels.get(node.id)!.size.slice(1)} Cluster Jewel ({clusterJewels.get(node.id)!.passiveCount} passives)
+            </span>
+          )}
+          {allocated && node.node.isJewelSocket && node.node.expansionJewel && !clusterJewels?.has(node.id) && (
+            <span className="text-xs text-stone-500">Click to configure cluster jewel</span>
+          )}
         </CardHeader>
         <Separator className="bg-stone-700" />
         <CardContent className="px-4 py-3 space-y-1.5">

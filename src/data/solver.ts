@@ -1,11 +1,15 @@
 /**
  * Steiner tree solver for PoE skill tree path planning.
  *
- * Uses an MST-based 2-approximation with weighted edges:
+ * Uses a tree-growing approach with multi-source 0-1 BFS:
  * - Blocked nodes are removed from the graph
- * - Already-allocated nodes cost 0 to traverse
- * - Would-like nodes cost 0.7 (soft waypoints)
- * - Normal nodes cost 1.0
+ * - Already-allocated nodes and previously connected nodes cost 0 to traverse
+ * - Normal nodes cost 1
+ *
+ * Tries connecting each required node first (different orderings),
+ * then greedily connects the rest. Picks the ordering with lowest total cost.
+ * This naturally handles path overlap — shared intermediate nodes are "free"
+ * for subsequent terminals.
  */
 
 export interface SolverResult {
@@ -13,11 +17,6 @@ export interface SolverResult {
   nodes: Set<string>
   /** Number of new points needed (excludes already-allocated nodes) */
   cost: number
-}
-
-interface DijkstraResult {
-  dist: Map<string, number>
-  prev: Map<string, string>
 }
 
 function buildFilteredAdjacency(
@@ -36,59 +35,50 @@ function buildFilteredAdjacency(
   return filtered
 }
 
+interface BFSResult {
+  dist: Map<string, number>
+  prev: Map<string, string>
+}
+
 /**
- * Weighted Dijkstra from a source node.
- * Edge weight to enter a node:
- *   - allocated node: 0 (free)
- *   - would-like node: 0.7 (preferred)
- *   - normal node: 1.0
+ * Multi-source 0-1 BFS from all nodes in `tree`.
+ * Nodes in `tree` have weight 0 (free to traverse), others cost 1.
+ * Returns distances and predecessor map for path reconstruction.
  */
-function dijkstra(
-  source: string,
+function multiSourceBFS(
+  tree: Set<string>,
   adjacency: Map<string, Set<string>>,
-  allocatedNodes: Set<string>,
-  wouldLikeNodes: Set<string>,
-): DijkstraResult {
+): BFSResult {
   const dist = new Map<string, number>()
   const prev = new Map<string, string>()
-  // Simple priority queue using sorted array (graph is sparse, ~3k nodes)
-  const queue: Array<{ node: string; cost: number }> = []
+  const deque: string[] = []
 
-  dist.set(source, 0)
-  queue.push({ node: source, cost: 0 })
+  // Initialize: all tree nodes at distance 0
+  for (const node of tree) {
+    dist.set(node, 0)
+    deque.push(node)
+  }
 
-  while (queue.length > 0) {
-    // Find min cost entry
-    let minIdx = 0
-    for (let i = 1; i < queue.length; i++) {
-      if (queue[i].cost < queue[minIdx].cost) minIdx = i
-    }
-    const { node: current, cost: currentCost } = queue[minIdx]
-    queue.splice(minIdx, 1)
-
-    // Skip if we already found a shorter path
-    const known = dist.get(current)
-    if (known !== undefined && currentCost > known) continue
+  while (deque.length > 0) {
+    const current = deque.shift()!
+    const currentDist = dist.get(current)!
 
     const neighbors = adjacency.get(current)
     if (!neighbors) continue
 
     for (const neighbor of neighbors) {
-      let edgeWeight: number
-      if (allocatedNodes.has(neighbor)) {
-        edgeWeight = 0
-      } else if (wouldLikeNodes.has(neighbor)) {
-        edgeWeight = 0.7
-      } else {
-        edgeWeight = 1.0
-      }
+      const weight = tree.has(neighbor) ? 0 : 1
+      const newDist = currentDist + weight
+      const oldDist = dist.get(neighbor)
 
-      const newDist = currentCost + edgeWeight
-      const prevDist = dist.get(neighbor)
-      if (prevDist === undefined || newDist < prevDist) {
+      if (oldDist === undefined || newDist < oldDist) {
         dist.set(neighbor, newDist)
         prev.set(neighbor, current)
-        queue.push({ node: neighbor, cost: newDist })
+        if (weight === 0) {
+          deque.unshift(neighbor)
+        } else {
+          deque.push(neighbor)
+        }
       }
     }
   }
@@ -96,70 +86,81 @@ function dijkstra(
   return { dist, prev }
 }
 
-/** Reconstruct the path from source to target using Dijkstra's prev map */
-function reconstructPath(
-  source: string,
+/**
+ * Collect the new (non-tree) nodes on the path from `target` back to the tree.
+ */
+function collectPathToTree(
   target: string,
   prev: Map<string, string>,
+  tree: Set<string>,
 ): string[] {
   const path: string[] = []
-  let current: string | undefined = target
-  while (current !== undefined && current !== source) {
+  let current = target
+  while (!tree.has(current)) {
     path.push(current)
-    current = prev.get(current)
+    const p = prev.get(current)
+    if (p === undefined) break
+    current = p
   }
-  if (current === source) {
-    path.push(source)
-  }
-  path.reverse()
   return path
 }
 
 /**
- * Prim's MST on a complete graph defined by a distance matrix.
- * Returns the set of MST edges as [i, j] index pairs.
+ * Grow a tree starting from `initialTree`, connecting required nodes
+ * in the given order. First node uses `firstTerminal`, rest are greedy
+ * (nearest first).
  */
-function primMST(
-  terminals: string[],
-  distMatrix: Map<string, Map<string, number>>,
-): Array<[string, string]> {
-  if (terminals.length <= 1) return []
+function growTree(
+  firstTerminal: string,
+  requiredNodes: Set<string>,
+  initialTree: Set<string>,
+  adjacency: Map<string, Set<string>>,
+): { tree: Set<string>; cost: number } | null {
+  const tree = new Set(initialTree)
+  const unreached = new Set(requiredNodes)
 
-  const inMST = new Set<string>()
-  const edges: Array<[string, string]> = []
-  inMST.add(terminals[0])
+  // Connect first terminal
+  const bfs1 = multiSourceBFS(tree, adjacency)
+  if (!bfs1.dist.has(firstTerminal) || bfs1.dist.get(firstTerminal) === undefined) {
+    return null
+  }
+  const path1 = collectPathToTree(firstTerminal, bfs1.prev, tree)
+  for (const n of path1) tree.add(n)
+  unreached.delete(firstTerminal)
 
-  while (inMST.size < terminals.length) {
-    let bestFrom = ''
-    let bestTo = ''
-    let bestDist = Infinity
+  // Greedy: connect nearest remaining terminal
+  while (unreached.size > 0) {
+    const bfs = multiSourceBFS(tree, adjacency)
 
-    for (const from of inMST) {
-      const dists = distMatrix.get(from)
-      if (!dists) continue
-      for (const to of terminals) {
-        if (inMST.has(to)) continue
-        const d = dists.get(to)
-        if (d !== undefined && d < bestDist) {
-          bestDist = d
-          bestFrom = from
-          bestTo = to
-        }
+    let nearestTerminal = ''
+    let nearestDist = Infinity
+    for (const t of unreached) {
+      const d = bfs.dist.get(t)
+      if (d !== undefined && d < nearestDist) {
+        nearestDist = d
+        nearestTerminal = t
       }
     }
 
-    if (bestDist === Infinity) break // Unreachable terminal
-    inMST.add(bestTo)
-    edges.push([bestFrom, bestTo])
+    if (nearestDist === Infinity) return null // unreachable
+
+    const path = collectPathToTree(nearestTerminal, bfs.prev, tree)
+    for (const n of path) tree.add(n)
+    unreached.delete(nearestTerminal)
   }
 
-  return edges
+  // Calculate cost: nodes in tree that weren't in the initial tree
+  let cost = 0
+  for (const n of tree) {
+    if (!initialTree.has(n)) cost++
+  }
+
+  return { tree, cost }
 }
 
 export function solveSteinerTree(
   classStartNodeId: string,
   requiredNodes: Set<string>,
-  wouldLikeNodes: Set<string>,
   blockedNodes: Set<string>,
   adjacency: Map<string, Set<string>>,
   allocatedNodes: Set<string>,
@@ -168,171 +169,36 @@ export function solveSteinerTree(
     return { nodes: new Set<string>(), cost: 0 }
   }
 
-  // Step 1: Build filtered adjacency graph
+  // Build filtered adjacency graph (remove blocked nodes)
   const filteredAdj = buildFilteredAdjacency(adjacency, blockedNodes)
 
-  // Step 2: Define terminals (class start + required nodes)
-  const terminals = [classStartNodeId, ...requiredNodes]
-  // Deduplicate
-  const terminalSet = new Set(terminals)
-  const uniqueTerminals = [...terminalSet]
+  // Initial tree = all allocated nodes + class start
+  const initialTree = new Set(allocatedNodes)
+  initialTree.add(classStartNodeId)
 
-  // Step 3: Run Dijkstra from each terminal
-  const dijkstraResults = new Map<string, DijkstraResult>()
-  for (const terminal of uniqueTerminals) {
-    dijkstraResults.set(
-      terminal,
-      dijkstra(terminal, filteredAdj, allocatedNodes, wouldLikeNodes),
-    )
-  }
-
-  // Check if all required nodes are reachable from class start
-  const startResult = dijkstraResults.get(classStartNodeId)!
+  // Check reachability first
+  const reachCheck = multiSourceBFS(initialTree, filteredAdj)
   for (const reqNode of requiredNodes) {
-    if (!startResult.dist.has(reqNode)) {
-      return {
-        error: `Required node is unreachable (may be blocked off)`,
-      }
+    if (!reachCheck.dist.has(reqNode)) {
+      return { error: 'Required node is unreachable (may be blocked off)' }
     }
   }
 
-  // Step 4: Build distance matrix between terminals
-  const distMatrix = new Map<string, Map<string, number>>()
-  for (const from of uniqueTerminals) {
-    const dists = new Map<string, number>()
-    const result = dijkstraResults.get(from)!
-    for (const to of uniqueTerminals) {
-      if (from === to) continue
-      const d = result.dist.get(to)
-      if (d !== undefined) dists.set(to, d)
-    }
-    distMatrix.set(from, dists)
-  }
+  // Try each required node as the first to connect, pick best overall result
+  let bestResult: Set<string> | null = null
+  let bestCost = Infinity
 
-  // Step 5: Compute MST
-  const mstEdges = primMST(uniqueTerminals, distMatrix)
-
-  // Step 6: Map MST edges back to actual paths
-  const resultNodes = new Set<string>()
-  for (const [from, to] of mstEdges) {
-    const result = dijkstraResults.get(from)!
-    const path = reconstructPath(from, to, result.prev)
-    for (const nodeId of path) {
-      resultNodes.add(nodeId)
+  for (const firstTerminal of requiredNodes) {
+    const result = growTree(firstTerminal, requiredNodes, initialTree, filteredAdj)
+    if (result && result.cost < bestCost) {
+      bestCost = result.cost
+      bestResult = result.tree
     }
   }
 
-  // Also ensure all terminals are included
-  for (const t of uniqueTerminals) {
-    resultNodes.add(t)
+  if (!bestResult) {
+    return { error: 'Required node is unreachable (may be blocked off)' }
   }
 
-  // Step 7: Prune non-terminal leaf nodes
-  // Build adjacency within result set
-  let changed = true
-  while (changed) {
-    changed = false
-    const toRemove: string[] = []
-    for (const nodeId of resultNodes) {
-      if (terminalSet.has(nodeId)) continue
-      if (allocatedNodes.has(nodeId)) continue // Keep allocated nodes (free)
-      // Count neighbors in result set
-      const neighbors = filteredAdj.get(nodeId)
-      if (!neighbors) {
-        toRemove.push(nodeId)
-        continue
-      }
-      let neighborCount = 0
-      for (const n of neighbors) {
-        if (resultNodes.has(n)) neighborCount++
-      }
-      // Leaf = only 1 connection within the result tree
-      if (neighborCount <= 1) {
-        toRemove.push(nodeId)
-      }
-    }
-    for (const id of toRemove) {
-      resultNodes.delete(id)
-      changed = true
-    }
-  }
-
-  // Re-add terminals that may have been removed
-  for (const t of uniqueTerminals) {
-    resultNodes.add(t)
-  }
-
-  // Step 7.5: Include nearby would-like nodes
-  // For each would-like node not already in the result, BFS to find the
-  // shortest path to any node in the result tree. Include it if the detour
-  // costs at most MAX_DETOUR extra nodes.
-  const MAX_DETOUR = 3
-  for (const wantId of wouldLikeNodes) {
-    if (resultNodes.has(wantId)) continue
-    if (blockedNodes.has(wantId)) continue
-
-    // BFS from the would-like node toward the result tree
-    const visited = new Set<string>([wantId])
-    const prev = new Map<string, string>()
-    const queue: string[] = [wantId]
-    let found: string | null = null
-
-    while (queue.length > 0 && !found) {
-      const current = queue.shift()!
-      // Don't search further than MAX_DETOUR hops
-      let depth = 0
-      let walk: string | undefined = current
-      while (walk && walk !== wantId) {
-        depth++
-        walk = prev.get(walk)
-      }
-      if (depth >= MAX_DETOUR) continue
-
-      const neighbors = filteredAdj.get(current)
-      if (!neighbors) continue
-      for (const neighbor of neighbors) {
-        if (visited.has(neighbor)) continue
-        visited.add(neighbor)
-        prev.set(neighbor, current)
-        if (resultNodes.has(neighbor)) {
-          found = neighbor
-          break
-        }
-        queue.push(neighbor)
-      }
-    }
-
-    if (found) {
-      // Reconstruct path from would-like node to the result tree
-      const detourPath: string[] = []
-      let node: string | undefined = found
-      while (node && node !== wantId) {
-        if (!resultNodes.has(node)) detourPath.push(node)
-        node = prev.get(node)
-      }
-      detourPath.push(wantId)
-
-      // Count how many NEW (non-free) nodes the detour adds
-      let detourCost = 0
-      for (const id of detourPath) {
-        if (!allocatedNodes.has(id) && !resultNodes.has(id)) detourCost++
-      }
-
-      if (detourCost <= MAX_DETOUR) {
-        for (const id of detourPath) {
-          resultNodes.add(id)
-        }
-      }
-    }
-  }
-
-  // Step 8: Calculate cost (nodes not already allocated, excluding class start)
-  let cost = 0
-  for (const nodeId of resultNodes) {
-    if (!allocatedNodes.has(nodeId) && nodeId !== classStartNodeId) {
-      cost++
-    }
-  }
-
-  return { nodes: resultNodes, cost }
+  return { nodes: bestResult, cost: bestCost }
 }

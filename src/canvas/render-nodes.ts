@@ -194,6 +194,19 @@ export function renderNodes(
         const category = getIconCategory(pn.type, isAllocated)
         const iconScale = sprites.getScaleFactor(viewport.zoom) * ICON_SCALE[pn.type]
         sprites.drawSprite(ctx, category, iconPath, sx, sy, viewport.zoom, iconScale)
+      } else if (id.startsWith('cv:')) {
+        // Virtual cluster node — draw a colored circle fill as the icon
+        const fillRadius = (pn.type === 'jewelSocket' ? 24 : 18) * viewport.zoom
+        ctx.save()
+        ctx.beginPath()
+        ctx.arc(sx, sy, fillRadius, 0, Math.PI * 2)
+        ctx.fillStyle = isAllocated
+          ? '#c8b074'
+          : isCanAllocate
+            ? '#6b5c3e'
+            : '#2a2520'
+        ctx.fill()
+        ctx.restore()
       }
     }
 

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { findShortestPath, getConnectedComponent } from '@/data/graph'
+import { type PathResult, findShortestPath, getConnectedComponent } from '@/data/graph'
+import { useClusterStore } from '@/state/cluster-store'
 import type { ProcessedNode } from '@/types/skill-tree'
 
 const SCION_CLASS_INDEX = 0
@@ -49,10 +50,18 @@ interface TreeState {
   setBanditChoice: (choice: BanditChoice) => void
   handleNodeClick: (nodeId: string) => void
   applyNodes: (nodeIds: Set<string>) => void
+  deallocateNodes: (nodeIds: Set<string>) => void
   setHovered: (nodeId: string | null) => void
   closeMasteryDialog: () => void
   handleMasterySelect: (nodeId: string, effectIndex: number) => void
   handleMasteryUnallocate: (nodeId: string) => void
+  loadSnapshot: (snapshot: {
+    classId: number
+    classStartNodeId: string
+    allocatedNodeIds: string[]
+    masteryEffects: Record<string, number>
+    banditChoice: BanditChoice
+  }) => void
   reset: () => void
 }
 
@@ -99,17 +108,18 @@ function computeHoveredPath(
     for (const [nid, npn] of processedNodes) {
       if (npn.node.group === groupId && npn.node.isNotable) groupNotables.push(nid)
     }
-    let bestPath: string[] | null = null
+    let bestResult: PathResult | null = null
     for (const notableId of groupNotables) {
-      const path = findShortestPath(notableId, notableId, adjacency, allocatedNodes)
-      if (path && (!bestPath || path.length < bestPath.length)) bestPath = path
+      const result = findShortestPath(notableId, notableId, adjacency, allocatedNodes)
+      if (result && (!bestResult || result.nodesToAllocate.length < bestResult.nodesToAllocate.length))
+        bestResult = result
     }
-    return bestPath ?? []
+    return bestResult?.fullPath ?? []
   }
 
   if (canAllocateNodes.has(hoveredNodeId)) return [hoveredNodeId]
-  const path = findShortestPath(hoveredNodeId, hoveredNodeId, adjacency, allocatedNodes)
-  return path ?? []
+  const result = findShortestPath(hoveredNodeId, hoveredNodeId, adjacency, allocatedNodes)
+  return result?.fullPath ?? []
 }
 
 export const useTreeStore = create<TreeState>((set, get) => ({
@@ -203,17 +213,20 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         }
         if (groupNotables.length === 0) return
 
-        let bestPath: string[] | null = null
+        let bestResult: PathResult | null = null
         for (const notableId of groupNotables) {
-          const path = findShortestPath(notableId, notableId, adjacency, allocatedNodes)
-          if (path && (!bestPath || path.length < bestPath.length)) {
-            bestPath = path
+          const result = findShortestPath(notableId, notableId, adjacency, allocatedNodes)
+          if (
+            result &&
+            (!bestResult || result.nodesToAllocate.length < bestResult.nodesToAllocate.length)
+          ) {
+            bestResult = result
           }
         }
-        if (!bestPath || pointsUsed + bestPath.length > totalPoints) return
+        if (!bestResult || pointsUsed + bestResult.nodesToAllocate.length > totalPoints) return
 
         const newAllocated = new Set(allocatedNodes)
-        for (const id of bestPath) newAllocated.add(id)
+        for (const id of bestResult.nodesToAllocate) newAllocated.add(id)
         const newPointsUsed = newAllocated.size - (classStartNodeId ? 1 : 0)
         const canAllocateNodes = computeCanAllocateNodes(newAllocated, adjacency)
         set({
@@ -314,10 +327,10 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         }
       } else {
         // Find shortest path
-        const path = findShortestPath(nodeId, nodeId, adjacency, allocatedNodes)
-        if (path && pointsUsed + path.length <= totalPoints) {
+        const result = findShortestPath(nodeId, nodeId, adjacency, allocatedNodes)
+        if (result && pointsUsed + result.nodesToAllocate.length <= totalPoints) {
           const newAllocated = new Set(allocatedNodes)
-          for (const id of path) newAllocated.add(id)
+          for (const id of result.nodesToAllocate) newAllocated.add(id)
           const newPointsUsed = newAllocated.size - (classStartNodeId ? 1 : 0)
           const newCanAllocate = computeCanAllocateNodes(newAllocated, adjacency)
           set({
@@ -353,6 +366,34 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       hoveredPath: computeHoveredPath(
         state.hoveredNodeId,
         newAllocated,
+        adjacency,
+        processedNodes,
+        canAllocateNodes,
+      ),
+    })
+  },
+
+  deallocateNodes(nodeIds) {
+    const state = get()
+    const { allocatedNodes, adjacency, processedNodes, classStartNodeId } = state
+    const newAllocated = new Set(allocatedNodes)
+    for (const id of nodeIds) {
+      newAllocated.delete(id)
+    }
+    // Run connected component check to clean up orphans
+    let connected = newAllocated
+    if (classStartNodeId && adjacency) {
+      connected = getConnectedComponent(classStartNodeId, adjacency, newAllocated)
+    }
+    const newPointsUsed = connected.size - (classStartNodeId ? 1 : 0)
+    const canAllocateNodes = computeCanAllocateNodes(connected, adjacency)
+    set({
+      allocatedNodes: connected,
+      canAllocateNodes,
+      pointsUsed: newPointsUsed,
+      hoveredPath: computeHoveredPath(
+        state.hoveredNodeId,
+        connected,
         adjacency,
         processedNodes,
         canAllocateNodes,
@@ -440,8 +481,31 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     })
   },
 
+  loadSnapshot(snapshot) {
+    const { adjacency } = get()
+    const allocatedNodes = new Set<string>(snapshot.allocatedNodeIds)
+    const masteryEffects = new Map(Object.entries(snapshot.masteryEffects).map(([k, v]) => [k, v]))
+    const canAllocateNodes = computeCanAllocateNodes(allocatedNodes, adjacency)
+    localStorage.setItem('poe-tree-selected-class', String(snapshot.classId))
+    localStorage.setItem('poe-tree-bandit-choice', snapshot.banditChoice)
+    set({
+      selectedClass: snapshot.classId,
+      classStartNodeId: snapshot.classStartNodeId,
+      allocatedNodes,
+      selectedMasteryEffects: masteryEffects,
+      banditChoice: snapshot.banditChoice,
+      totalPoints: computeTotalPoints(snapshot.classId, snapshot.banditChoice),
+      canAllocateNodes,
+      pointsUsed: allocatedNodes.size - 1,
+      hoveredNodeId: null,
+      masteryDialogNodeId: null,
+      hoveredPath: [],
+    })
+  },
+
   reset() {
     const { classStartNodeId, adjacency } = get()
+    useClusterStore.getState().reset()
     if (classStartNodeId) {
       const allocatedNodes = new Set<string>([classStartNodeId])
       const canAllocateNodes = computeCanAllocateNodes(allocatedNodes, adjacency)

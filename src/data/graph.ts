@@ -162,56 +162,74 @@ export function queryNearbyNodes(
   return results
 }
 
+export interface PathResult {
+  nodesToAllocate: string[]
+  fullPath: string[]
+}
+
 export function findShortestPath(
   _from: string,
   to: string,
   adjacency: Map<string, Set<string>>,
   allocatedNodes: Set<string>,
-): string[] | null {
-  // BFS from 'to' toward any allocated node
-  const visited = new Set<string>()
+): PathResult | null {
+  // 0-1 BFS from 'to' toward any allocated node.
+  // Cost 0 to traverse already-allocated nodes, cost 1 for unallocated.
+  // This minimizes the number of NEW nodes that must be allocated.
+  const dist = new Map<string, number>()
   const parent = new Map<string, string>()
-  const queue: string[] = [to]
-  visited.add(to)
+  const deque: string[] = [to]
+  dist.set(to, 1)
 
-  while (queue.length > 0) {
-    const current = queue.shift()!
-    if (allocatedNodes.has(current)) {
-      // Reconstruct path from 'to' to this allocated node
-      const path: string[] = []
+  let bestResult: PathResult | null = null
+  let bestCost = Infinity
+
+  while (deque.length > 0) {
+    const current = deque.shift()!
+    const currentDist = dist.get(current)!
+
+    if (currentDist >= bestCost) continue
+
+    if (allocatedNodes.has(current) && current !== to) {
+      // Reconstruct full path from to → current
+      const fullPath: string[] = []
       let node: string | undefined = current
-      // Walk backwards to 'to', but we want nodes from allocated to target
-      // Actually reconstruct from 'to' back
-      node = current
-      const reversePath: string[] = []
       while (node !== undefined && node !== to) {
-        reversePath.push(node)
+        fullPath.unshift(node)
         node = parent.get(node)
       }
-      // path from 'to' to allocated node, excluding the allocated node
-      // We want: nodes to allocate = path excluding already-allocated ones
-      path.push(to)
-      for (let i = reversePath.length - 1; i >= 0; i--) {
-        if (!allocatedNodes.has(reversePath[i])) {
-          path.push(reversePath[i])
-        }
+      fullPath.unshift(to)
+
+      const nodesToAllocate = fullPath.filter((n) => !allocatedNodes.has(n))
+
+      if (nodesToAllocate.length < bestCost) {
+        bestCost = nodesToAllocate.length
+        bestResult = { nodesToAllocate, fullPath }
       }
-      return path
+      continue
     }
 
     const neighbors = adjacency.get(current)
-    if (neighbors) {
-      for (const neighbor of neighbors) {
-        if (!visited.has(neighbor)) {
-          visited.add(neighbor)
-          parent.set(neighbor, current)
-          queue.push(neighbor)
+    if (!neighbors) continue
+
+    for (const neighbor of neighbors) {
+      const edgeCost = allocatedNodes.has(neighbor) ? 0 : 1
+      const newDist = currentDist + edgeCost
+
+      if (newDist < (dist.get(neighbor) ?? Infinity)) {
+        dist.set(neighbor, newDist)
+        parent.set(neighbor, current)
+
+        if (edgeCost === 0) {
+          deque.unshift(neighbor)
+        } else {
+          deque.push(neighbor)
         }
       }
     }
   }
 
-  return null
+  return bestResult
 }
 
 export function getConnectedComponent(

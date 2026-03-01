@@ -202,29 +202,12 @@ export function renderConnections(
 
   // Draw hovered path preview: show the path that would be allocated
   if (hoveredPath.length >= 2) {
-  // Build set of edges in the hovered path for quick lookup
+  // Build set of edges from consecutive nodes in the hovered path
   const pathEdges = new Set<string>()
   for (let i = 0; i < hoveredPath.length - 1; i++) {
     const a = hoveredPath[i]
     const b = hoveredPath[i + 1]
-    // Also check adjacency to find the actual connected pairs
-    const neighbors = adjacency.get(a)
-    if (neighbors?.has(b)) {
-      pathEdges.add(a < b ? `${a}-${b}` : `${b}-${a}`)
-    }
-  }
-
-  // If the path nodes aren't directly consecutive in adjacency, find edges along the path
-  // by checking all pairs of adjacent path nodes
-  const pathSet = new Set(hoveredPath)
-  for (const nodeId of hoveredPath) {
-    const neighbors = adjacency.get(nodeId)
-    if (!neighbors) continue
-    for (const neighborId of neighbors) {
-      if (pathSet.has(neighborId)) {
-        pathEdges.add(nodeId < neighborId ? `${nodeId}-${neighborId}` : `${neighborId}-${nodeId}`)
-      }
-    }
+    pathEdges.add(a < b ? `${a}-${b}` : `${b}-${a}`)
   }
 
   const previewSegments: Segment[] = []
