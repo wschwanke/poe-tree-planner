@@ -28,7 +28,7 @@ export function hitTest(
     const dx = worldX - pn.worldX
     const dy = worldY - pn.worldY
     const dist = Math.sqrt(dx * dx + dy * dy)
-    const hitRadius = getNodeRadius(pn.type)
+    const hitRadius = getNodeRadius(pn.type) * 1.3
 
     if (dist <= hitRadius && dist < closestDist) {
       closest = id

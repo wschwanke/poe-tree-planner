@@ -1,11 +1,14 @@
 import { create } from 'zustand'
 import { type PathResult, findShortestPath, getConnectedComponent } from '@/data/graph'
 import { useClusterStore } from '@/state/cluster-store'
-import type { ProcessedNode } from '@/types/skill-tree'
+import type { ProcessedNode, TreeMode } from '@/types/skill-tree'
 
 const SCION_CLASS_INDEX = 0
 const SCION_BASE_POINTS = 127
 const DEFAULT_BASE_POINTS = 122
+
+export const ATLAS_START_NODE = '29045'
+export const ATLAS_TOTAL_POINTS = 132
 
 export type BanditChoice = 'none' | 'kill_all'
 
@@ -17,7 +20,9 @@ function getBasePoints(classIndex: number | null): number {
 function computeTotalPoints(
   classIndex: number | null,
   banditChoice: BanditChoice,
+  treeMode: TreeMode = 'skill',
 ): number {
+  if (treeMode === 'atlas') return ATLAS_TOTAL_POINTS
   return getBasePoints(classIndex) + (banditChoice === 'kill_all' ? 1 : 0)
 }
 
@@ -30,6 +35,7 @@ interface UndoSnapshot {
 
 interface TreeState {
   // Core state
+  treeMode: TreeMode
   selectedClass: number | null
   classStartNodeId: string | null
   allocatedNodes: Set<string>
@@ -59,6 +65,7 @@ interface TreeState {
   ) => void
   selectClass: (classIndex: number, startNodeId: string) => void
   setBanditChoice: (choice: BanditChoice) => void
+  initAtlas: () => void
   handleNodeClick: (nodeId: string) => void
   applyNodes: (nodeIds: Set<string>) => void
   deallocateNodes: (nodeIds: Set<string>) => void
@@ -146,6 +153,7 @@ function pushUndo(state: TreeState): UndoSnapshot[] {
 
 export const useTreeStore = create<TreeState>((set, get) => ({
   // Core state
+  treeMode: 'skill' as TreeMode,
   selectedClass: null,
   classStartNodeId: null,
   allocatedNodes: new Set<string>(),
@@ -164,6 +172,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   totalPoints: computeTotalPoints(
     null,
     (localStorage.getItem('poe-tree-bandit-choice') as BanditChoice) || 'none',
+    'skill',
   ),
 
   // Derived state
@@ -181,6 +190,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     const allocatedNodes = new Set<string>([startNodeId])
     const canAllocateNodes = computeCanAllocateNodes(allocatedNodes, adjacency)
     set({
+      treeMode: 'skill' as TreeMode,
       selectedClass: classIndex,
       classStartNodeId: startNodeId,
       allocatedNodes,
@@ -190,16 +200,37 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       canAllocateNodes,
       pointsUsed: 0,
       hoveredPath: [],
-      totalPoints: computeTotalPoints(classIndex, banditChoice),
+      totalPoints: computeTotalPoints(classIndex, banditChoice, 'skill'),
+    })
+  },
+
+  initAtlas() {
+    const { adjacency } = get()
+    const allocatedNodes = new Set<string>([ATLAS_START_NODE])
+    const canAllocateNodes = computeCanAllocateNodes(allocatedNodes, adjacency)
+    set({
+      treeMode: 'atlas' as TreeMode,
+      selectedClass: null,
+      classStartNodeId: ATLAS_START_NODE,
+      allocatedNodes,
+      hoveredNodeId: null,
+      selectedMasteryEffects: new Map(),
+      masteryDialogNodeId: null,
+      canAllocateNodes,
+      pointsUsed: 0,
+      hoveredPath: [],
+      undoStack: [],
+      canUndo: false,
+      totalPoints: ATLAS_TOTAL_POINTS,
     })
   },
 
   setBanditChoice(choice) {
-    const { selectedClass } = get()
+    const { selectedClass, treeMode } = get()
     localStorage.setItem('poe-tree-bandit-choice', choice)
     set({
       banditChoice: choice,
-      totalPoints: computeTotalPoints(selectedClass, choice),
+      totalPoints: computeTotalPoints(selectedClass, choice, treeMode),
     })
   },
 
@@ -537,7 +568,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       allocatedNodes,
       selectedMasteryEffects: masteryEffects,
       banditChoice: snapshot.banditChoice,
-      totalPoints: computeTotalPoints(snapshot.classId, snapshot.banditChoice),
+      totalPoints: computeTotalPoints(snapshot.classId, snapshot.banditChoice, 'skill'),
       canAllocateNodes,
       pointsUsed: allocatedNodes.size - 1,
       hoveredNodeId: null,
@@ -569,8 +600,27 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   },
 
   reset() {
-    const { classStartNodeId, adjacency } = get()
+    const { treeMode, adjacency } = get()
     useClusterStore.getState().reset()
+
+    if (treeMode === 'atlas') {
+      const allocatedNodes = new Set<string>([ATLAS_START_NODE])
+      const canAllocateNodes = computeCanAllocateNodes(allocatedNodes, adjacency)
+      set({
+        undoStack: [],
+        canUndo: false,
+        allocatedNodes,
+        hoveredNodeId: null,
+        selectedMasteryEffects: new Map(),
+        masteryDialogNodeId: null,
+        canAllocateNodes,
+        pointsUsed: 0,
+        hoveredPath: [],
+      })
+      return
+    }
+
+    const { classStartNodeId } = get()
     if (classStartNodeId) {
       const allocatedNodes = new Set<string>([classStartNodeId])
       const canAllocateNodes = computeCanAllocateNodes(allocatedNodes, adjacency)

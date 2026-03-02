@@ -1,11 +1,13 @@
+export type TreeMode = 'skill' | 'atlas'
+
 export interface SkillTreeData {
   tree: string
-  classes: CharacterClass[]
-  alternate_ascendancies: AlternateAscendancy[]
+  classes?: CharacterClass[]
+  alternate_ascendancies?: AlternateAscendancy[]
   groups: Record<string, Group>
   nodes: Record<string, SkillNode>
-  extraImages: Record<string, ExtraImage>
-  jewelSlots: number[]
+  extraImages?: Record<string, ExtraImage>
+  jewelSlots?: number[]
   min_x: number
   min_y: number
   max_x: number
@@ -76,6 +78,7 @@ export interface SkillNode {
   isProxy?: boolean
   isMultipleChoice?: boolean
   isMultipleChoiceOption?: boolean
+  isWormhole?: boolean
   classStartIndex?: number
   expansionJewel?: ExpansionJewel
   stats?: string[]
@@ -145,7 +148,14 @@ export interface ProcessedNode {
   type: NodeType
 }
 
-export type NodeType = 'normal' | 'notable' | 'keystone' | 'mastery' | 'jewelSocket' | 'classStart'
+export type NodeType =
+  | 'normal'
+  | 'notable'
+  | 'keystone'
+  | 'mastery'
+  | 'jewelSocket'
+  | 'classStart'
+  | 'wormhole'
 
 export interface ViewportState {
   offsetX: number

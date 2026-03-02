@@ -58,7 +58,7 @@ export function render(
     rc.canAllocateNodes,
     rc.hoveredNodeId,
     rc.hoveredPath,
-    rc.data.classes,
+    rc.data.classes ?? [],
     rc.searchMatchNodeIds,
     rc.animationTime,
   )

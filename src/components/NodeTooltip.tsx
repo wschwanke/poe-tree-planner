@@ -21,6 +21,7 @@ const TYPE_LABELS: Record<string, string> = {
   mastery: 'Mastery',
   jewelSocket: 'Jewel Socket',
   classStart: 'Class Start',
+  wormhole: 'Wormhole',
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -30,6 +31,7 @@ const TYPE_COLORS: Record<string, string> = {
   mastery: 'bg-purple-700',
   jewelSocket: 'bg-cyan-700',
   classStart: 'bg-stone-500',
+  wormhole: 'bg-indigo-700',
 }
 
 export function NodeTooltip({

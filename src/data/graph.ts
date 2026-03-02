@@ -21,6 +21,7 @@ export function getNodeType(node: {
   isNotable?: boolean
   isMastery?: boolean
   isJewelSocket?: boolean
+  isWormhole?: boolean
   classStartIndex?: number
 }): NodeType {
   if (node.classStartIndex !== undefined) return 'classStart'
@@ -28,6 +29,7 @@ export function getNodeType(node: {
   if (node.isNotable) return 'notable'
   if (node.isMastery) return 'mastery'
   if (node.isJewelSocket) return 'jewelSocket'
+  if (node.isWormhole) return 'wormhole'
   return 'normal'
 }
 

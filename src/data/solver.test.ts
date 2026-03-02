@@ -370,8 +370,6 @@ describe('solveSteinerTree', () => {
         worldX: 0,
         worldY: 0,
         type: id === 'A' ? 'notable' : 'normal',
-        spriteCoords: null as unknown as ProcessedNode['spriteCoords'],
-        radius: 10,
       })
     }
 
@@ -418,8 +416,6 @@ describe('solveSteinerTree', () => {
         worldX: 0,
         worldY: 0,
         type: id === 'X' ? 'notable' : 'normal',
-        spriteCoords: null as unknown as ProcessedNode['spriteCoords'],
-        radius: 10,
       })
     }
 

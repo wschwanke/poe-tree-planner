@@ -1,6 +1,10 @@
-import type { SkillTreeData } from '@/types/skill-tree'
-import skillTreeJson from '../../data/skill-tree.json'
+import type { SkillTreeData, TreeMode } from '@/types/skill-tree'
 
-export function loadSkillTreeData(): SkillTreeData {
-  return skillTreeJson as unknown as SkillTreeData
+export async function loadTreeData(mode: TreeMode): Promise<SkillTreeData> {
+  if (mode === 'atlas') {
+    const m = await import('../../data/atlas-tree.json')
+    return m.default as unknown as SkillTreeData
+  }
+  const m = await import('../../data/skill-tree.json')
+  return m.default as unknown as SkillTreeData
 }

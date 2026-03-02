@@ -1,22 +1,5 @@
 import type { SkillTreeData, SpriteCoord } from '@/types/skill-tree'
 
-// Map CDN filenames to local asset paths
-const filenameMap: Record<string, string> = {}
-
-function getLocalFilename(cdnUrl: string): string {
-  if (filenameMap[cdnUrl]) return filenameMap[cdnUrl]
-
-  // Extract the base filename from the CDN URL
-  // e.g. "https://web.poecdn.com/image/passive-skill/skills-0.jpg?fe66e493" -> "skills-0.jpg"
-  const match = cdnUrl.match(/\/([^/]+?\.\w+)(?:\?|$)/)
-  if (match) {
-    const local = `/assets/skill-tree/${match[1]}`
-    filenameMap[cdnUrl] = local
-    return local
-  }
-  return cdnUrl
-}
-
 interface LoadedSprite {
   image: HTMLImageElement
   ready: boolean
@@ -25,9 +8,26 @@ interface LoadedSprite {
 export class SpriteManager {
   private images = new Map<string, LoadedSprite>()
   private data: SkillTreeData
+  private assetBasePath: string
+  private filenameMap: Record<string, string> = {}
 
-  constructor(data: SkillTreeData) {
+  constructor(data: SkillTreeData, assetBasePath = '/assets/skill-tree/') {
     this.data = data
+    this.assetBasePath = assetBasePath
+  }
+
+  private getLocalFilename(cdnUrl: string): string {
+    if (this.filenameMap[cdnUrl]) return this.filenameMap[cdnUrl]
+
+    // Extract the base filename from the CDN URL
+    // e.g. "https://web.poecdn.com/image/passive-skill/skills-0.jpg?fe66e493" -> "skills-0.jpg"
+    const match = cdnUrl.match(/\/([^/]+?\.\w+)(?:\?|$)/)
+    if (match) {
+      const local = `${this.assetBasePath}${match[1]}`
+      this.filenameMap[cdnUrl] = local
+      return local
+    }
+    return cdnUrl
   }
 
   getZoomLevelIndex(zoom: number): number {
@@ -77,30 +77,12 @@ export class SpriteManager {
     const variant = spriteSheet[zoomKey]
     if (!variant) return
 
-    const localPath = getLocalFilename(variant.filename)
+    const localPath = this.getLocalFilename(variant.filename)
     this.loadImage(localPath)
   }
 
   preloadAllCategories(zoom: number): void {
-    const categories = [
-      'normalInactive',
-      'normalActive',
-      'notableInactive',
-      'notableActive',
-      'keystoneInactive',
-      'keystoneActive',
-      'frame',
-      'groupBackground',
-      'background',
-      'startNode',
-      'line',
-      'mastery',
-      'masteryConnected',
-      'masteryInactive',
-      'masteryActiveSelected',
-      'jewel',
-    ]
-    for (const cat of categories) {
+    for (const cat of Object.keys(this.data.sprites)) {
       this.preloadCategory(cat, zoom)
     }
   }
@@ -124,7 +106,7 @@ export class SpriteManager {
     const coord = variant.coords[coordKey]
     if (!coord) return false
 
-    const localPath = getLocalFilename(variant.filename)
+    const localPath = this.getLocalFilename(variant.filename)
     const sprite = this.loadImage(localPath)
     if (!sprite.ready) return false
 
@@ -153,7 +135,7 @@ export class SpriteManager {
     const zoomKey = this.getZoomLevel(zoom)
     const variant = spriteSheet[zoomKey]
     if (!variant) return null
-    const localPath = getLocalFilename(variant.filename)
+    const localPath = this.getLocalFilename(variant.filename)
     const sprite = this.loadImage(localPath)
     return sprite.ready ? sprite.image : null
   }

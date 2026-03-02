@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { render } from '@/canvas/renderer'
 import { solveSteinerTree } from '@/data/solver'
 import { type NodeClickEvent, useCanvasInteraction } from '@/hooks/useCanvasInteraction'
@@ -14,6 +21,7 @@ import { useClusterStore } from '@/state/cluster-store'
 import { useSearchStore } from '@/state/search-store'
 import { useTreeStore } from '@/state/tree-store'
 import { EXPANSION_SIZE_MAP } from '@/types/cluster-jewel'
+import type { TreeMode } from '@/types/skill-tree'
 import { BuildManager } from './BuildManager'
 import { BuildToolbar } from './BuildToolbar'
 import { ClassSelector } from './ClassSelectionDialog'
@@ -31,10 +39,13 @@ import { StatSummaryPanel } from './StatSummaryPanel'
 
 interface SkillTreeCanvasProps {
   context: SkillTreeContext
+  treeMode: TreeMode
+  onTreeModeChange: (mode: TreeMode) => void
 }
 
-export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
+export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTreeCanvasProps) {
   const { data, processedNodes, adjacency, spatialIndex, sprites } = context
+  const isAtlas = treeMode === 'atlas'
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const { viewportRef, dirtyRef, viewportState, setViewportState, handlePan, handleCenterOn } =
     useViewport(canvasRef)
@@ -48,9 +59,9 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
   const setClusterJewel = useClusterStore((s) => s.setClusterJewel)
   const removeClusterJewel = useClusterStore((s) => s.removeClusterJewel)
 
-  // Merge cluster virtual nodes with base tree data
+  // Merge cluster virtual nodes with base tree data (skip for atlas — no cluster jewels)
   const merged = useMemo(() => {
-    if (clusterJewels.size === 0) {
+    if (isAtlas || clusterJewels.size === 0) {
       return {
         processedNodes,
         adjacency,
@@ -84,12 +95,19 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
 
     return buildMergedData(processedNodes, adjacency, clusterResults)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [processedNodes, adjacency, spatialIndex, data, clusterJewels, clusterVersion])
+  }, [processedNodes, adjacency, spatialIndex, data, clusterJewels, clusterVersion, isAtlas])
 
   // Initialize store context with merged data
   useEffect(() => {
     useTreeStore.getState().setContext(merged.processedNodes, merged.adjacency)
   }, [merged.processedNodes, merged.adjacency])
+
+  // Initialize atlas mode when context loads
+  useEffect(() => {
+    if (isAtlas) {
+      useTreeStore.getState().initAtlas()
+    }
+  }, [isAtlas, merged.processedNodes])
 
   const selectedClass = useTreeStore((s) => s.selectedClass)
   const allocatedNodes = useTreeStore((s) => s.allocatedNodes)
@@ -124,31 +142,34 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
       } else {
         if (event.button === 2) return
 
-        // Check for cluster socket click — open dialog instead of unallocating
-        if (allocatedNodes.has(event.nodeId)) {
+        if (!isAtlas) {
+          // Check for cluster socket click — open dialog instead of unallocating
+          if (allocatedNodes.has(event.nodeId)) {
+            const pn = merged.processedNodes.get(event.nodeId)
+            if (pn?.node.isJewelSocket && isClusterSocket(pn.node)) {
+              openClusterDialog(event.nodeId)
+              return
+            }
+          }
+
+          // For unallocated cluster sockets, allocate then open dialog
           const pn = merged.processedNodes.get(event.nodeId)
-          if (pn?.node.isJewelSocket && isClusterSocket(pn.node)) {
+          if (pn?.node.isJewelSocket && isClusterSocket(pn.node) && canAllocateNodes.has(event.nodeId)) {
+            handleNodeClick(event.nodeId)
             openClusterDialog(event.nodeId)
             return
           }
         }
 
-        // For unallocated cluster sockets, allocate then open dialog
-        const pn = merged.processedNodes.get(event.nodeId)
-        if (pn?.node.isJewelSocket && isClusterSocket(pn.node) && canAllocateNodes.has(event.nodeId)) {
-          handleNodeClick(event.nodeId)
-          openClusterDialog(event.nodeId)
-          return
-        }
-
         handleNodeClick(event.nodeId)
       }
     },
-    [planningActive, toggleFlag, handleNodeClick, allocatedNodes, canAllocateNodes, merged.processedNodes, openClusterDialog],
+    [planningActive, toggleFlag, handleNodeClick, allocatedNodes, canAllocateNodes, merged.processedNodes, openClusterDialog, isAtlas],
   )
 
-  // Clean up cluster configs when their sockets are unallocated
+  // Clean up cluster configs when their sockets are unallocated (skill tree only)
   useEffect(() => {
+    if (isAtlas) return
     const jewels = useClusterStore.getState().clusterJewels
     for (const socketId of jewels.keys()) {
       if (!allocatedNodes.has(socketId)) {
@@ -165,7 +186,7 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
         removeClusterJewel(socketId)
       }
     }
-  }, [allocatedNodes, deallocateNodes, removeClusterJewel])
+  }, [allocatedNodes, deallocateNodes, removeClusterJewel, isAtlas])
 
   // Mark dirty when store state changes that affect rendering
   const prevAllocatedRef = useRef(allocatedNodes)
@@ -218,8 +239,9 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
     [selectClass, processedNodes, handleCenterOn],
   )
 
-  // Restore class selection from localStorage on mount
+  // Restore class selection from localStorage on mount (skill tree only)
   useEffect(() => {
+    if (isAtlas) return
     if (selectedClass !== null) return
     const saved = localStorage.getItem('poe-tree-selected-class')
     if (saved === null) return
@@ -230,7 +252,7 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
         return
       }
     }
-  }, [processedNodes, selectClass, selectedClass])
+  }, [processedNodes, selectClass, selectedClass, isAtlas])
 
   // Keyboard shortcuts: P=planning, Escape=exit planning, Enter=solve/apply, Ctrl+Z=undo
   useEffect(() => {
@@ -505,14 +527,32 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
 
       {/* Top bar left: identity, actions, search */}
       <div className="absolute top-3 left-3 z-40 flex items-center gap-2">
-        <ClassSelector
-          data={data}
-          processedNodes={processedNodes}
-          selectedClass={selectedClass}
-          onSelect={handleClassSelect}
-        />
-        {selectedClass !== null && <PointCounter used={pointsUsed} total={totalPoints} />}
-        {selectedClass !== null && (
+        <Select value={treeMode} onValueChange={(v) => onTreeModeChange(v as TreeMode)}>
+          <SelectTrigger
+            size="sm"
+            className="h-7 w-[120px] bg-stone-950/90 border-amber-900/50 text-stone-300 backdrop-blur-sm text-xs"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-stone-950 border-stone-700">
+            <SelectItem value="skill" className="text-stone-300 text-xs">
+              Skill Tree
+            </SelectItem>
+            <SelectItem value="atlas" className="text-stone-300 text-xs">
+              Atlas Tree
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        {!isAtlas && (
+          <ClassSelector
+            data={data}
+            processedNodes={processedNodes}
+            selectedClass={selectedClass}
+            onSelect={handleClassSelect}
+          />
+        )}
+        {(isAtlas || selectedClass !== null) && <PointCounter used={pointsUsed} total={totalPoints} />}
+        {(isAtlas || selectedClass !== null) && (
           <>
             <div className="w-px h-5 bg-stone-700/60" />
             <Button
@@ -538,7 +578,7 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
             >
               {planningActive ? 'Planning' : 'Plan'}
             </Button>
-            <BuildToolbar />
+            {!isAtlas && <BuildToolbar />}
             <div className="w-px h-5 bg-stone-700/60" />
           </>
         )}
@@ -551,33 +591,37 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
       </div>
 
       {/* Top bar right: settings, help — offset when side panel is visible */}
-      <div className={`absolute top-3 z-40 flex items-center gap-2 ${selectedClass !== null ? 'right-[21.5rem]' : 'right-3'}`}>
+      <div className={`absolute top-3 z-40 flex items-center gap-2 ${isAtlas || selectedClass !== null ? 'right-[21.5rem]' : 'right-3'}`}>
         <SettingsDialog />
         <HelpMenu />
       </div>
 
-      {/* Mastery selection dialog */}
-      <MasterySelectionDialog
-        open={masteryDialogNodeId !== null}
-        node={masteryDialogNode}
-        currentEffectIndex={currentMasteryEffect}
-        canAffordPoint={pointsUsed < totalPoints || currentMasteryEffect !== null}
-        onSelectEffect={handleMasterySelect}
-        onUnallocate={handleMasteryUnallocate}
-        onClose={closeMasteryDialog}
-      />
+      {/* Mastery selection dialog (skill tree only) */}
+      {!isAtlas && (
+        <MasterySelectionDialog
+          open={masteryDialogNodeId !== null}
+          node={masteryDialogNode}
+          currentEffectIndex={currentMasteryEffect}
+          canAffordPoint={pointsUsed < totalPoints || currentMasteryEffect !== null}
+          onSelectEffect={handleMasterySelect}
+          onUnallocate={handleMasteryUnallocate}
+          onClose={closeMasteryDialog}
+        />
+      )}
 
-      {/* Cluster jewel dialog */}
-      <ClusterJewelDialog
-        open={clusterDialogSocketId !== null}
-        socketSize={clusterDialogSocketSize}
-        currentConfig={clusterDialogCurrentConfig}
-        onConfigure={handleClusterConfigure}
-        onRemove={handleClusterRemove}
-        onUnallocate={handleClusterUnallocate}
-        onAllocateWithout={closeClusterDialog}
-        onClose={closeClusterDialog}
-      />
+      {/* Cluster jewel dialog (skill tree only) */}
+      {!isAtlas && (
+        <ClusterJewelDialog
+          open={clusterDialogSocketId !== null}
+          socketSize={clusterDialogSocketSize}
+          currentConfig={clusterDialogCurrentConfig}
+          onConfigure={handleClusterConfigure}
+          onRemove={handleClusterRemove}
+          onUnallocate={handleClusterUnallocate}
+          onAllocateWithout={closeClusterDialog}
+          onClose={closeClusterDialog}
+        />
+      )}
 
       {/* Command palette (Ctrl+K) */}
       <CommandPalette
@@ -597,14 +641,14 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
             viewport={viewportState}
             allocated={allocatedNodes.has(hoveredNode.id)}
             selectedMasteryEffects={selectedMasteryEffects}
-            classes={data.classes}
+            classes={data.classes ?? []}
             clusterJewels={clusterJewels}
           />
         </div>
       )}
 
       {/* Right side panel: planning or stats */}
-      {selectedClass !== null && (
+      {(isAtlas || selectedClass !== null) && (
         planningActive ? (
           <PlanningInfoPanel
             adjacency={merged.adjacency}
@@ -620,9 +664,13 @@ export function SkillTreeCanvas({ context }: SkillTreeCanvasProps) {
         )
       )}
 
-      {/* Build management */}
-      <BuildManager />
-      <PoBExportDialog />
+      {/* Build management (skill tree only) */}
+      {!isAtlas && (
+        <>
+          <BuildManager />
+          <PoBExportDialog />
+        </>
+      )}
     </div>
   )
 }

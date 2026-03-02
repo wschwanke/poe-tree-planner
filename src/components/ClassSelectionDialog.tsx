@@ -45,7 +45,7 @@ export function ClassSelector({
         <SelectValue placeholder="Select class..." />
       </SelectTrigger>
       <SelectContent className="bg-stone-950 border-stone-700">
-        {data.classes.map((cls, idx) => {
+        {data.classes?.map((cls, idx) => {
           if (!classStarts.has(idx)) return null
           return (
             <SelectItem

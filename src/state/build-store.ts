@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import type { Build, BuildStep } from '@/types/build'
-import type { BanditChoice } from '@/state/tree-store'
 import { useTreeStore } from '@/state/tree-store'
 
 const STORAGE_KEY = 'poe-tree-builds'

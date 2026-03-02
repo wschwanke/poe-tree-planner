@@ -23,6 +23,11 @@ const FRAME_MAP: Record<string, { unallocated: string; canAllocate: string; allo
     canAllocate: 'JewelFrameCanAllocate',
     allocated: 'JewelFrameAllocated',
   },
+  wormhole: {
+    unallocated: 'WormholeFrameUnallocated',
+    canAllocate: 'WormholeFrameCanAllocate',
+    allocated: 'WormholeFrameAllocated',
+  },
 }
 
 const ICON_SCALE: Record<NodeType, number> = {
@@ -32,6 +37,7 @@ const ICON_SCALE: Record<NodeType, number> = {
   mastery: 1.0,
   jewelSocket: 1.0,
   classStart: 1.0,
+  wormhole: 1.0,
 }
 
 function getIconCategory(type: NodeType, allocated: boolean): string {
@@ -42,6 +48,8 @@ function getIconCategory(type: NodeType, allocated: boolean): string {
       return allocated ? 'notableActive' : 'notableInactive'
     case 'mastery':
       return allocated ? 'masteryConnected' : 'mastery'
+    case 'wormhole':
+      return allocated ? 'wormholeActive' : 'wormholeInactive'
     default:
       return allocated ? 'normalActive' : 'normalInactive'
   }
@@ -109,6 +117,7 @@ export function renderNodes(
         keystoneNodes.push(entry)
         break
       case 'notable':
+      case 'wormhole':
         notableNodes.push(entry)
         break
       case 'mastery':
@@ -300,6 +309,8 @@ export function getNodeRadius(type: NodeType): number {
     case 'notable':
       return 48
     case 'mastery':
+      return 48
+    case 'wormhole':
       return 48
     case 'jewelSocket':
       return 40
