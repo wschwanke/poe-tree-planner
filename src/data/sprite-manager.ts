@@ -10,7 +10,7 @@ function getLocalFilename(cdnUrl: string): string {
   // e.g. "https://web.poecdn.com/image/passive-skill/skills-0.jpg?fe66e493" -> "skills-0.jpg"
   const match = cdnUrl.match(/\/([^/]+?\.\w+)(?:\?|$)/)
   if (match) {
-    const local = `/assets/${match[1]}`
+    const local = `/assets/skill-tree/${match[1]}`
     filenameMap[cdnUrl] = local
     return local
   }
