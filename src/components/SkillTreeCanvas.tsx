@@ -360,6 +360,7 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
         canvas.width = targetW
         canvas.height = targetH
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        ctx.imageSmoothingQuality = 'high'
         dirtyRef.current = true
       }
 

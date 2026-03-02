@@ -30,6 +30,10 @@ export class SpriteManager {
     return cdnUrl
   }
 
+  getMaxZoomLevelIndex(): number {
+    return this.data.imageZoomLevels.length - 1
+  }
+
   getZoomLevelIndex(zoom: number): number {
     const levels = this.data.imageZoomLevels
     // Find the smallest sprite zoom that is >= our viewport zoom
@@ -95,11 +99,13 @@ export class SpriteManager {
     dy: number,
     zoom: number,
     scale?: number,
+    useMaxZoom?: boolean,
   ): boolean {
     const spriteSheet = this.data.sprites[category]
     if (!spriteSheet) return false
 
-    const zoomKey = this.getZoomLevel(zoom)
+    const idx = useMaxZoom ? this.getMaxZoomLevelIndex() : this.getZoomLevelIndex(zoom)
+    const zoomKey = String(this.data.imageZoomLevels[idx])
     const variant = spriteSheet[zoomKey]
     if (!variant) return false
 
@@ -110,7 +116,7 @@ export class SpriteManager {
     const sprite = this.loadImage(localPath)
     if (!sprite.ready) return false
 
-    const scaleFactor = scale ?? this.getScaleFactor(zoom)
+    const scaleFactor = scale ?? (zoom / this.data.imageZoomLevels[idx])
     const dw = coord.w * scaleFactor
     const dh = coord.h * scaleFactor
 

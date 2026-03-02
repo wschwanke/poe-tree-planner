@@ -1,7 +1,7 @@
 import type { ViewportState } from '@/types/skill-tree'
 
 export const MIN_ZOOM = 0.05
-export const MAX_ZOOM = 2.0
+export const MAX_ZOOM = 0.8
 export const DEFAULT_ZOOM = 0.25
 
 export function createViewport(width: number, height: number): ViewportState {
