@@ -19,23 +19,22 @@ export function useSkillTree() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    loadSkillTreeData()
-      .then((data) => {
-        const processedNodes = buildProcessedNodes(data)
-        const adjacency = buildAdjacencyGraph(processedNodes)
-        const spatialIndex = buildSpatialIndex(processedNodes)
-        const sprites = new SpriteManager(data)
+    try {
+      const data = loadSkillTreeData()
+      const processedNodes = buildProcessedNodes(data)
+      const adjacency = buildAdjacencyGraph(processedNodes)
+      const spatialIndex = buildSpatialIndex(processedNodes)
+      const sprites = new SpriteManager(data)
 
-        // Preload sprites at default zoom
-        sprites.preloadAllCategories(0.25)
+      // Preload sprites at default zoom
+      sprites.preloadAllCategories(0.25)
 
-        setContext({ data, processedNodes, adjacency, spatialIndex, sprites })
-        setLoading(false)
-      })
-      .catch((err) => {
-        setError(err.message)
-        setLoading(false)
-      })
+      setContext({ data, processedNodes, adjacency, spatialIndex, sprites })
+      setLoading(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setLoading(false)
+    }
   }, [])
 
   return { context, loading, error }

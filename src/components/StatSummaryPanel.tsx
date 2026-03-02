@@ -29,7 +29,7 @@ export function StatSummaryPanel({
   return (
     <div className="absolute top-0 right-0 z-40 h-full w-80 pointer-events-none">
       <Card className="m-4 h-[calc(100%-2rem)] gap-0 py-0 bg-stone-950/90 border-stone-800 backdrop-blur-sm pointer-events-auto">
-        <CardHeader className="px-4 py-3">
+        <CardHeader className="px-4 py-3 grid-rows-[auto]">
           <CardTitle className="text-sm text-stone-300">Passive Stats</CardTitle>
         </CardHeader>
         <Separator className="bg-stone-800" />
