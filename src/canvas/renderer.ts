@@ -1,7 +1,7 @@
 import type { SpatialIndex } from '@/data/graph'
 import type { SpriteManager } from '@/data/sprite-manager'
 import type { ProcessedNode, SkillTreeData, ViewportState } from '@/types/skill-tree'
-import { renderGroupBackgrounds } from './render-backgrounds'
+import { renderGroupBackgrounds, renderTreeBackground } from './render-backgrounds'
 import { renderConnections } from './render-connections'
 import { renderNodes } from './render-nodes'
 import { type PlanningFlags, renderPlanningOverlays } from './render-planning'
@@ -34,10 +34,13 @@ export function render(
   ctx.fillStyle = '#08070a'
   ctx.fillRect(0, 0, width, height)
 
-  // 1. Group backgrounds
+  // 1. Main tree background image
+  renderTreeBackground(ctx, rc.data, viewport, rc.sprites, rc.isAtlas)
+
+  // 2. Group backgrounds
   renderGroupBackgrounds(ctx, rc.data, rc.processedNodes, viewport, rc.sprites)
 
-  // 2. Connections
+  // 3. Connections
   renderConnections(
     ctx,
     rc.processedNodes,
@@ -50,7 +53,7 @@ export function render(
     rc.hoveredNodeId,
   )
 
-  // 3. Nodes (frames + icons + class starts)
+  // 4. Nodes (frames + icons + class starts)
   renderNodes(
     ctx,
     rc.processedNodes,
@@ -66,7 +69,7 @@ export function render(
     rc.isAtlas,
   )
 
-  // 4. Planning overlays (flags + solver preview)
+  // 5. Planning overlays (flags + solver preview)
   if (rc.planningFlags) {
     renderPlanningOverlays(
       ctx,

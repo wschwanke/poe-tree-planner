@@ -389,9 +389,15 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
         dirtyRef.current = true
       }
 
-      // Animate search highlights or atlas can-allocate pulse
+      // Animate search highlights, atlas can-allocate pulse, or mastery sibling pulse
       if (searchState.matchingNodeIds.size > 0 || (isAtlas && canAllocateNodes.size > 0)) {
         dirtyRef.current = true
+      }
+      if (hoveredNodeId) {
+        const pn = merged.processedNodes.get(hoveredNodeId)
+        if (pn?.type === 'mastery') {
+          dirtyRef.current = true
+        }
       }
 
       if (dirtyRef.current) {

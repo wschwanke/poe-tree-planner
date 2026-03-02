@@ -2,6 +2,57 @@ import type { SpriteManager } from '@/data/sprite-manager'
 import type { ProcessedNode, SkillTreeData, ViewportState } from '@/types/skill-tree'
 import { isInView, worldToScreen } from './viewport'
 
+// ── Tunable background constants ──
+// Skill tree background
+const SKILL_BG_CENTER_X = 0
+const SKILL_BG_CENTER_Y = 0
+const SKILL_BG_WIDTH = 26000
+const SKILL_BG_HEIGHT = 21000
+const SKILL_BG_SCALE = 1.1
+const SKILL_BG_OPACITY = 0.4
+
+// Atlas tree background
+const ATLAS_BG_CENTER_X = -75
+const ATLAS_BG_CENTER_Y = -4800
+const ATLAS_BG_WIDTH = 12000
+const ATLAS_BG_HEIGHT = 12000
+const ATLAS_BG_SCALE = 0.98
+const ATLAS_BG_OPACITY = 0.8
+
+export function renderTreeBackground(
+  ctx: CanvasRenderingContext2D,
+  data: SkillTreeData,
+  viewport: ViewportState,
+  sprites: SpriteManager,
+  isAtlas: boolean,
+): void {
+  const category = isAtlas ? 'atlasBackground' : 'background'
+  const coordKey = isAtlas ? 'AtlasPassiveBackground' : 'Background2'
+
+  const maxZoom = data.imageZoomLevels[data.imageZoomLevels.length - 1]
+  const coord = sprites.getSpriteCoord(category, coordKey, maxZoom)
+  const image = sprites.getSpriteImage(category, maxZoom)
+  if (!coord || !image) return
+
+  const cx = isAtlas ? ATLAS_BG_CENTER_X : SKILL_BG_CENTER_X
+  const cy = isAtlas ? ATLAS_BG_CENTER_Y : SKILL_BG_CENTER_Y
+  const scale = isAtlas ? ATLAS_BG_SCALE : SKILL_BG_SCALE
+  const hw = ((isAtlas ? ATLAS_BG_WIDTH : SKILL_BG_WIDTH) * scale) / 2
+  const hh = ((isAtlas ? ATLAS_BG_HEIGHT : SKILL_BG_HEIGHT) * scale) / 2
+  const opacity = isAtlas ? ATLAS_BG_OPACITY : SKILL_BG_OPACITY
+
+  const [x0, y0] = worldToScreen(cx - hw, cy - hh, viewport)
+  const [x1, y1] = worldToScreen(cx + hw, cy + hh, viewport)
+
+  ctx.globalAlpha = opacity
+  ctx.drawImage(
+    image,
+    coord.x, coord.y, coord.w, coord.h,
+    x0, y0, x1 - x0, y1 - y0,
+  )
+  ctx.globalAlpha = 1
+}
+
 /** Draw a group background sprite with 1px top inset to prevent
  *  image smoothing from sampling adjacent sprites in the sheet. */
 function drawGroupSprite(

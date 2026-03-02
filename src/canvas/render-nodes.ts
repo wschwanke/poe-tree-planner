@@ -83,24 +83,33 @@ export function renderNodes(
   // Pulsing opacity for atlas can-allocate nodes
   const atlasPulseAlpha = isAtlas ? 0.35 + 0.25 * ((Math.sin(animationTime * 0.003) + 1) / 2) : 1
 
-  // Render class start decorations first
-  for (const [, pn] of processedNodes) {
-    if (pn.type !== 'classStart') continue
-    if (!isInView(pn.worldX, pn.worldY, viewport, 200)) continue
+  // Render start node decorations
+  if (isAtlas) {
+    // Atlas start node: root is at the origin but has no group, so draw manually
+    if (isInView(0, 0, viewport, 300)) {
+      const [sx, sy] = worldToScreen(0, 0, viewport)
+      sprites.drawSprite(ctx, 'startNode', 'AtlasPassiveSkillScreenStart', sx, sy, viewport.zoom)
+    }
+  } else {
+    // Skill tree: draw class start backgrounds and class-specific center art
+    for (const [, pn] of processedNodes) {
+      if (pn.type !== 'classStart') continue
+      if (!isInView(pn.worldX, pn.worldY, viewport, 200)) continue
 
-    const [sx, sy] = worldToScreen(pn.worldX, pn.worldY, viewport)
+      const [sx, sy] = worldToScreen(pn.worldX, pn.worldY, viewport)
 
-    // Draw the circular shadow/background behind each class start node
-    sprites.drawSprite(ctx, 'startNode', 'PSStartNodeBackgroundInactive', sx, sy, viewport.zoom)
+      // Draw the circular shadow/background behind each class start node
+      sprites.drawSprite(ctx, 'startNode', 'PSStartNodeBackgroundInactive', sx, sy, viewport.zoom)
 
-    // Use class name from data.classes (node names like "SIX"/"Seven" don't match sprite keys)
-    const classIndex = pn.node.classStartIndex
-    const className =
-      classIndex !== undefined
-        ? classes[classIndex]?.name?.toLowerCase()
-        : pn.node.name?.toLowerCase()
-    if (className) {
-      sprites.drawSprite(ctx, 'startNode', `center${className}`, sx, sy, viewport.zoom)
+      // Use class name from data.classes (node names like "SIX"/"Seven" don't match sprite keys)
+      const classIndex = pn.node.classStartIndex
+      const className =
+        classIndex !== undefined
+          ? classes[classIndex]?.name?.toLowerCase()
+          : pn.node.name?.toLowerCase()
+      if (className) {
+        sprites.drawSprite(ctx, 'startNode', `center${className}`, sx, sy, viewport.zoom)
+      }
     }
   }
 
@@ -283,6 +292,38 @@ export function renderNodes(
         if (activeFrame) {
           sprites.drawSprite(ctx, 'frame', activeFrame.allocated, sx, sy, viewport.zoom)
         }
+      }
+      ctx.restore()
+    }
+  }
+
+  // Mastery sibling pulse — highlight other masteries of the same type when hovering one
+  if (hoveredNodeId) {
+    const hoveredPn = processedNodes.get(hoveredNodeId)
+    const hoveredMasteryIcon = hoveredPn?.type === 'mastery'
+      ? (hoveredPn.node.inactiveIcon ?? hoveredPn.node.icon)
+      : undefined
+    if (hoveredPn?.type === 'mastery' && hoveredMasteryIcon) {
+      const pulsePhase = (Math.sin(animationTime * 0.004) + 1) / 2
+      const pulseAlpha = 0.3 + pulsePhase * 0.7
+
+      ctx.save()
+      for (const [id, pn] of masteryNodes) {
+        const siblingIcon = pn.node.inactiveIcon ?? pn.node.icon
+        if (siblingIcon !== hoveredMasteryIcon) continue
+
+        const [sx, sy] = worldToScreen(pn.worldX, pn.worldY, viewport)
+        const nodeRadius = getNodeRadius('mastery') * viewport.zoom
+        const spread = Math.max(3, 6 * viewport.zoom)
+        const lineW = Math.max(2, 3 * viewport.zoom)
+
+        ctx.beginPath()
+        ctx.arc(sx, sy, nodeRadius + spread, 0, Math.PI * 2)
+        ctx.strokeStyle = `rgba(200, 176, 116, ${pulseAlpha})`
+        ctx.lineWidth = lineW
+        ctx.shadowColor = `rgba(200, 176, 116, ${0.4 + pulsePhase * 0.4})`
+        ctx.shadowBlur = Math.max(6, spread * 2)
+        ctx.stroke()
       }
       ctx.restore()
     }
