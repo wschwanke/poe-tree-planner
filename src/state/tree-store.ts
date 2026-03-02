@@ -205,7 +205,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
   handleNodeClick(nodeId) {
     const state = get()
-    const { adjacency, processedNodes, allocatedNodes, totalPoints, classStartNodeId } = state
+    const { adjacency, processedNodes, allocatedNodes, classStartNodeId } = state
     if (!adjacency || !processedNodes) return
 
     const pn = processedNodes.get(nodeId)
@@ -213,8 +213,6 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
     // Proxy nodes are always blocked
     if (pn.node.isProxy) return
-
-    const pointsUsed = allocatedNodes.size - (classStartNodeId ? 1 : 0)
 
     // Mastery nodes: auto-path to group notable if needed, then open selection dialog
     if (pn.node.isMastery) {
@@ -249,7 +247,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
             bestResult = result
           }
         }
-        if (!bestResult || pointsUsed + bestResult.nodesToAllocate.length > totalPoints) return
+        if (!bestResult) return
 
         const undoStack = pushUndo(state)
         const newAllocated = new Set(allocatedNodes)
@@ -339,31 +337,29 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       const canAllocateNodes = computeCanAllocateNodes(allocatedNodes, adjacency)
       if (canAllocateNodes.has(nodeId)) {
         // Direct neighbor
-        if (pointsUsed + 1 <= totalPoints) {
-          const undoStack = pushUndo(state)
-          const newAllocated = new Set(allocatedNodes)
-          newAllocated.add(nodeId)
-          const newPointsUsed = newAllocated.size - (classStartNodeId ? 1 : 0)
-          const newCanAllocate = computeCanAllocateNodes(newAllocated, adjacency)
-          set({
-            undoStack,
-            canUndo: true,
-            allocatedNodes: newAllocated,
-            canAllocateNodes: newCanAllocate,
-            pointsUsed: newPointsUsed,
-            hoveredPath: computeHoveredPath(
-              state.hoveredNodeId,
-              newAllocated,
-              adjacency,
-              processedNodes,
-              newCanAllocate,
-            ),
-          })
-        }
+        const undoStack = pushUndo(state)
+        const newAllocated = new Set(allocatedNodes)
+        newAllocated.add(nodeId)
+        const newPointsUsed = newAllocated.size - (classStartNodeId ? 1 : 0)
+        const newCanAllocate = computeCanAllocateNodes(newAllocated, adjacency)
+        set({
+          undoStack,
+          canUndo: true,
+          allocatedNodes: newAllocated,
+          canAllocateNodes: newCanAllocate,
+          pointsUsed: newPointsUsed,
+          hoveredPath: computeHoveredPath(
+            state.hoveredNodeId,
+            newAllocated,
+            adjacency,
+            processedNodes,
+            newCanAllocate,
+          ),
+        })
       } else {
         // Find shortest path
         const result = findShortestPath(nodeId, nodeId, adjacency, allocatedNodes)
-        if (result && pointsUsed + result.nodesToAllocate.length <= totalPoints) {
+        if (result) {
           const undoStack = pushUndo(state)
           const newAllocated = new Set(allocatedNodes)
           for (const id of result.nodesToAllocate) newAllocated.add(id)
@@ -465,8 +461,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
   handleMasterySelect(nodeId, effectIndex) {
     const state = get()
-    const { allocatedNodes, classStartNodeId, adjacency, totalPoints } = state
-    const pointsUsed = allocatedNodes.size - (classStartNodeId ? 1 : 0)
+    const { allocatedNodes, classStartNodeId, adjacency } = state
 
     const undoStack = pushUndo(state)
     if (state.selectedMasteryEffects.has(nodeId)) {
@@ -476,30 +471,28 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       set({ undoStack, canUndo: true, selectedMasteryEffects: newEffects, masteryDialogNodeId: null })
     } else {
       // New allocation - costs 1 point
-      if (pointsUsed + 1 <= totalPoints) {
-        const newAllocated = new Set(allocatedNodes)
-        newAllocated.add(nodeId)
-        const newEffects = new Map(state.selectedMasteryEffects)
-        newEffects.set(nodeId, effectIndex)
-        const newPointsUsed = newAllocated.size - (classStartNodeId ? 1 : 0)
-        const canAllocateNodes = computeCanAllocateNodes(newAllocated, adjacency)
-        set({
-          undoStack,
-          canUndo: true,
-          allocatedNodes: newAllocated,
-          selectedMasteryEffects: newEffects,
-          masteryDialogNodeId: null,
+      const newAllocated = new Set(allocatedNodes)
+      newAllocated.add(nodeId)
+      const newEffects = new Map(state.selectedMasteryEffects)
+      newEffects.set(nodeId, effectIndex)
+      const newPointsUsed = newAllocated.size - (classStartNodeId ? 1 : 0)
+      const canAllocateNodes = computeCanAllocateNodes(newAllocated, adjacency)
+      set({
+        undoStack,
+        canUndo: true,
+        allocatedNodes: newAllocated,
+        selectedMasteryEffects: newEffects,
+        masteryDialogNodeId: null,
+        canAllocateNodes,
+        pointsUsed: newPointsUsed,
+        hoveredPath: computeHoveredPath(
+          state.hoveredNodeId,
+          newAllocated,
+          adjacency,
+          state.processedNodes,
           canAllocateNodes,
-          pointsUsed: newPointsUsed,
-          hoveredPath: computeHoveredPath(
-            state.hoveredNodeId,
-            newAllocated,
-            adjacency,
-            state.processedNodes,
-            canAllocateNodes,
-          ),
-        })
-      }
+        ),
+      })
     }
   },
 

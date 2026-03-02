@@ -1,73 +1,141 @@
-# React + TypeScript + Vite
+# PoE Tree Planner
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A Path of Exile 1 passive skill tree planner built with React, TypeScript, and HTML5 Canvas.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Interactive Skill Tree** — Full passive tree (3,281 nodes) rendered on HTML5 Canvas with pan and zoom
+- **Class Selection** — Choose a starting class to begin allocating points
+- **Smart Pathing** — Shortest-path allocation via BFS; chain-breaking logic on deallocation
+- **Node Tooltips** — Hover any node to see its stats and description
+- **Stat Summary** — Aggregated stat totals from all allocated nodes
+- **Point Counter** — Track allocated passive points
+- **Command Palette** — Search nodes by name or stat (`Ctrl+K`)
+- **Planning Mode** — Mark nodes as required or blocked to plan builds before committing points (`P`)
+- **Build Manager** — Save and load multiple builds
+- **Path of Building Export** — Export builds in PoB-compatible format
+- **Cluster Jewels** — Cluster jewel socket support
+- **Mastery Selection** — Choose mastery effects for mastery nodes
+- **Keyboard Shortcuts** — Help menu with all keybinds (`?`)
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is currently not compatible with SWC. See [this issue](https://github.com/vitejs/vite-plugin-react/issues/428) for tracking the progress.
+- [React 19](https://react.dev/) + [TypeScript 5.9](https://www.typescriptlang.org/)
+- [Vite 8](https://vite.dev/) (with SWC)
+- [Tailwind CSS 4](https://tailwindcss.com/)
+- [shadcn/ui](https://ui.shadcn.com/) (Radix primitives)
+- [Zustand](https://zustand.docs.pmnd.rs/) for state management
+- [Biome](https://biomejs.dev/) for linting and formatting
 
-## Expanding the ESLint configuration
+## Getting Started
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Prerequisites
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- Node.js 20+
+- npm
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Install
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
 ```
+
+### Build
+
+```bash
+npm run build
+```
+
+### Preview Production Build
+
+```bash
+npm run preview
+```
+
+### Lint
+
+```bash
+npm run lint         # auto-fix
+npm run lint:check   # check only
+```
+
+## Project Structure
+
+```
+src/
+├── canvas/           # Canvas rendering pipeline
+│   ├── renderer.ts           # Main render loop
+│   ├── render-nodes.ts       # Node rendering (frames + icons)
+│   ├── render-connections.ts # Lines between nodes
+│   ├── render-backgrounds.ts # Group background images
+│   ├── render-planning.ts    # Planning mode overlays
+│   ├── viewport.ts           # Pan/zoom transform math
+│   └── hit-detection.ts      # Click → node lookup via spatial index
+├── components/       # React components
+│   ├── SkillTreeCanvas.tsx       # Main canvas + UI overlay
+│   ├── ClassSelectionDialog.tsx  # Starting class picker
+│   ├── NodeTooltip.tsx           # Hover tooltip
+│   ├── PointCounter.tsx          # Passive point display
+│   ├── StatSummaryPanel.tsx      # Aggregated stats
+│   ├── BuildManager.tsx          # Save/load builds
+│   ├── BuildToolbar.tsx          # Toolbar controls
+│   ├── CommandPalette.tsx        # Ctrl+K search
+│   ├── QuickSearch.tsx           # Inline search
+│   ├── PlanningToolbar.tsx       # Planning mode controls
+│   ├── PlanningInfoPanel.tsx     # Planning mode info
+│   ├── PoBExportDialog.tsx       # Path of Building export
+│   ├── ClusterJewelDialog.tsx    # Cluster jewel config
+│   ├── MasterySelectionDialog.tsx# Mastery effect picker
+│   ├── SettingsDialog.tsx        # Settings
+│   ├── HelpMenu.tsx              # Keyboard shortcut reference
+│   └── ui/                       # shadcn/ui primitives
+├── config/           # Keybind definitions
+├── data/             # Data loading and processing
+│   ├── skill-tree-loader.ts  # Parse skill-tree.json
+│   ├── graph.ts               # BFS, adjacency, spatial index
+│   ├── sprite-manager.ts      # Sprite sheet loading
+│   ├── search.ts              # Node search logic
+│   ├── solver.ts              # Path optimization
+│   ├── cluster-jewels.ts      # Cluster jewel data
+│   └── pob-export.ts          # PoB export encoding
+├── hooks/            # React hooks
+│   ├── useSkillTree.ts         # Load and process tree data
+│   ├── useCanvasInteraction.ts # Mouse/touch event handling
+│   ├── useViewport.ts          # Pan/zoom state
+│   └── useSearch.ts            # Search state
+├── state/            # Zustand stores
+│   ├── tree-store.ts       # Core tree state (allocation, class)
+│   ├── build-store.ts      # Build save/load
+│   ├── planning-store.ts   # Planning mode state
+│   ├── search-store.ts     # Search state
+│   ├── cluster-store.ts    # Cluster jewel state
+│   └── stat-aggregator.ts  # Stat totals computation
+├── types/            # TypeScript type definitions
+│   ├── skill-tree.ts   # Skill tree data types
+│   ├── build.ts        # Build types
+│   └── cluster-jewel.ts# Cluster jewel types
+└── lib/
+    └── utils.ts        # Utility helpers (cn, etc.)
+```
+
+## Keybinds
+
+| Key | Action |
+|-----|--------|
+| Left Click + Drag | Pan the skill tree |
+| Scroll Wheel | Zoom in / out |
+| Left Click | Allocate / deallocate a node |
+| Hover | Show node tooltip |
+| `Ctrl+K` | Open command palette |
+| `P` | Toggle planning mode |
+| `?` | Toggle help menu |
+
+## License
+
+Private
