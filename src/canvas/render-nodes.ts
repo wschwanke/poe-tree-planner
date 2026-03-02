@@ -70,8 +70,8 @@ export function renderNodes(
 ): void {
   const useLOD = viewport.zoom < LOD_ZOOM_THRESHOLD
 
-  // Pulsing opacity for atlas can-allocate nodes
-  const atlasPulseAlpha = isAtlas ? 0.35 + 0.25 * ((Math.sin(animationTime * 0.003) + 1) / 2) : 1
+  // Pulsing alpha for can-allocate outline effects
+  const canAllocatePulseAlpha = 0.3 + 0.7 * ((Math.sin(animationTime * 0.003) + 1) / 2)
 
   // Render start node decorations
   if (isAtlas) {
@@ -149,12 +149,10 @@ export function renderNodes(
       else groups[2].nodes.push(entry)
     }
 
-    for (const [gi, group] of groups.entries()) {
+    for (const group of groups) {
       if (group.nodes.length === 0) continue
       ctx.save()
       ctx.fillStyle = group.color
-      // Apply pulsing opacity to atlas can-allocate LOD dots (group index 1)
-      if (isAtlas && gi === 1) ctx.globalAlpha = atlasPulseAlpha
       ctx.beginPath()
       for (const [, pn] of group.nodes) {
         const [sx, sy] = worldToScreen(pn.worldX, pn.worldY, viewport)
@@ -179,8 +177,6 @@ export function renderNodes(
     const isAllocated = allocatedNodes.has(id)
     const isCanAllocate = canAllocateNodes.has(id)
     const isHovered = id === hoveredNodeId
-
-    const useAtlasPulse = isAtlas && isCanAllocate && !isAllocated
 
     // Draw icon first (behind the frame) — always use max zoom sprites for sharpness
     if (pn.type === 'mastery') {
@@ -235,22 +231,32 @@ export function renderNodes(
       }
     }
 
-    // Draw frame on top to mask square icon edges
+    // Draw frame on top to mask square icon edges — always at full opacity
     const frameInfo = FRAME_MAP[pn.type]
     if (frameInfo) {
-      if (useAtlasPulse) {
-        ctx.save()
-        ctx.globalAlpha = atlasPulseAlpha
-      }
       const frameKey = isAllocated
         ? frameInfo.allocated
         : isCanAllocate
           ? frameInfo.canAllocate
           : frameInfo.unallocated
       sprites.drawSprite(ctx, 'frame', frameKey, sx, sy, viewport.zoom)
-      if (useAtlasPulse) {
-        ctx.restore()
-      }
+    }
+
+    // Pulsing outline glow for can-allocate nodes
+    if (isCanAllocate && !isAllocated) {
+      const nodeRadius = getNodeRadius(pn.type) * viewport.zoom
+      const spread = Math.max(3, 5 * viewport.zoom)
+      const lineW = Math.max(1.5, 2.5 * viewport.zoom)
+
+      ctx.save()
+      ctx.beginPath()
+      ctx.arc(sx, sy, nodeRadius + spread, 0, Math.PI * 2)
+      ctx.strokeStyle = `rgba(200, 176, 116, ${canAllocatePulseAlpha * 0.6})`
+      ctx.lineWidth = lineW
+      ctx.shadowColor = `rgba(200, 176, 116, ${canAllocatePulseAlpha * 0.3})`
+      ctx.shadowBlur = Math.max(4, spread * 2)
+      ctx.stroke()
+      ctx.restore()
     }
 
     // Hover preview: draw the allocated appearance at 33% opacity
