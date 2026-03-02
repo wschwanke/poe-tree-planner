@@ -110,13 +110,17 @@ function computeHoveredPath(
   adjacency: Map<string, Set<string>> | null,
   processedNodes: Map<string, ProcessedNode> | null,
   canAllocateNodes: Set<string>,
+  treeMode: TreeMode = 'skill',
 ): string[] {
   if (!hoveredNodeId || !adjacency || !processedNodes) return []
   if (allocatedNodes.has(hoveredNodeId)) return []
   const pn = processedNodes.get(hoveredNodeId)
   if (!pn || pn.node.isProxy) return []
 
-  // For mastery nodes, find the path to the nearest group notable
+  // Atlas mastery nodes are decorative — no hover path
+  if (pn.node.isMastery && treeMode === 'atlas') return []
+
+  // For skill tree mastery nodes, find the path to the nearest group notable
   if (pn.node.isMastery) {
     const groupId = pn.node.group
     for (const allocId of allocatedNodes) {
@@ -473,7 +477,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   },
 
   setHovered(nodeId) {
-    const { allocatedNodes, adjacency, processedNodes, canAllocateNodes } = get()
+    const { allocatedNodes, adjacency, processedNodes, canAllocateNodes, treeMode } = get()
     set({
       hoveredNodeId: nodeId,
       hoveredPath: computeHoveredPath(
@@ -482,6 +486,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         adjacency,
         processedNodes,
         canAllocateNodes,
+        treeMode,
       ),
     })
   },

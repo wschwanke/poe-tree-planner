@@ -25,7 +25,7 @@ const FRAME_MAP: Record<string, { unallocated: string; canAllocate: string; allo
   },
   wormhole: {
     unallocated: 'WormholeFrameUnallocated',
-    canAllocate: 'WormholeFrameCanAllocate',
+    canAllocate: 'WormholeFrameHighlight',
     allocated: 'WormholeFrameAllocated',
   },
 }
@@ -76,6 +76,7 @@ export function renderNodes(
   classes: CharacterClass[] = [],
   searchMatchNodeIds: Set<string> = new Set(),
   animationTime = 0,
+  isAtlas = false,
 ): void {
   const useLOD = viewport.zoom < LOD_ZOOM_THRESHOLD
 
@@ -146,9 +147,12 @@ export function renderNodes(
       else groups[2].nodes.push(entry)
     }
 
-    for (const group of groups) {
+    for (const [gi, group] of groups.entries()) {
       if (group.nodes.length === 0) continue
+      ctx.save()
       ctx.fillStyle = group.color
+      // Apply pulsing opacity to atlas can-allocate LOD dots (group index 1)
+      if (isAtlas && gi === 1) ctx.globalAlpha = atlasPulseAlpha
       ctx.beginPath()
       for (const [, pn] of group.nodes) {
         const [sx, sy] = worldToScreen(pn.worldX, pn.worldY, viewport)
@@ -156,6 +160,7 @@ export function renderNodes(
         ctx.arc(sx, sy, nodeRadius, 0, Math.PI * 2)
       }
       ctx.fill()
+      ctx.restore()
     }
   }
 
@@ -167,11 +172,21 @@ export function renderNodes(
   // Full render order for search highlights (includes LOD nodes)
   const renderOrder = [...normalNodes, ...masteryNodes, ...notableNodes, ...keystoneNodes]
 
+  // Pulsing opacity for atlas can-allocate nodes
+  const atlasPulseAlpha = isAtlas ? 0.35 + 0.25 * ((Math.sin(animationTime * 0.003) + 1) / 2) : 1
+
   for (const [id, pn] of spriteNodes) {
     const [sx, sy] = worldToScreen(pn.worldX, pn.worldY, viewport)
     const isAllocated = allocatedNodes.has(id)
     const isCanAllocate = canAllocateNodes.has(id)
     const isHovered = id === hoveredNodeId
+
+    // Atlas can-allocate nodes: reduced pulsing opacity
+    const useAtlasPulse = isAtlas && isCanAllocate && !isAllocated
+    if (useAtlasPulse) {
+      ctx.save()
+      ctx.globalAlpha = atlasPulseAlpha
+    }
 
     // Draw icon first (behind the frame)
     if (pn.type === 'mastery') {
@@ -196,7 +211,15 @@ export function renderNodes(
           viewport.zoom,
           iconScale,
         )
+      } else if (pn.node.icon) {
+        // Atlas mastery: decorative icon, use 'mastery' sprite category
+        sprites.drawSprite(ctx, 'mastery', pn.node.icon, sx, sy, viewport.zoom, iconScale)
       }
+    } else if (pn.type === 'wormhole') {
+      // Wormhole nodes use a fixed coord key, not the node's icon path
+      const category = getIconCategory(pn.type, isAllocated)
+      const iconScale = sprites.getScaleFactor(viewport.zoom) * ICON_SCALE[pn.type]
+      sprites.drawSprite(ctx, category, 'Wormhole', sx, sy, viewport.zoom, iconScale)
     } else {
       const iconPath = pn.node.icon
       if (iconPath) {
@@ -230,6 +253,10 @@ export function renderNodes(
       sprites.drawSprite(ctx, 'frame', frameKey, sx, sy, viewport.zoom)
     }
 
+    if (useAtlasPulse) {
+      ctx.restore()
+    }
+
     // Hover preview: draw the allocated appearance at 33% opacity
     if ((isHovered || hoveredPathSet.has(id)) && !isAllocated) {
       ctx.save()
@@ -248,7 +275,7 @@ export function renderNodes(
           )
         }
       } else {
-        const iconPath = pn.node.icon
+        const iconPath = pn.type === 'wormhole' ? 'Wormhole' : pn.node.icon
         if (iconPath) {
           const activeCategory = getIconCategory(pn.type, true)
           const iconScale = sprites.getScaleFactor(viewport.zoom) * ICON_SCALE[pn.type]

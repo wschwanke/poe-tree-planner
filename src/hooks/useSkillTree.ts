@@ -32,9 +32,10 @@ export function useSkillTree(treeMode: TreeMode) {
         const processedNodes = buildProcessedNodes(data)
         const adjacency = buildAdjacencyGraph(processedNodes)
         const spatialIndex = buildSpatialIndex(processedNodes)
-        const assetBasePath =
-          treeMode === 'atlas' ? '/assets/atlas-tree/' : '/assets/skill-tree/'
-        const sprites = new SpriteManager(data, assetBasePath)
+        const sprites = new SpriteManager(
+          data,
+          treeMode === 'atlas' ? '/assets/atlas-tree/' : '/assets/',
+        )
 
         // Preload sprites at default zoom
         sprites.preloadAllCategories(0.25)

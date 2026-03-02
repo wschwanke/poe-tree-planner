@@ -20,6 +20,7 @@ export interface RenderContext {
   animationTime: number
   planningFlags: PlanningFlags | null
   solverPreview: Set<string>
+  isAtlas: boolean
 }
 
 export function render(
@@ -46,6 +47,7 @@ export function render(
     rc.data,
     rc.hoveredPath,
     rc.solverPreview,
+    rc.hoveredNodeId,
   )
 
   // 3. Nodes (frames + icons + class starts)
@@ -61,6 +63,7 @@ export function render(
     rc.data.classes ?? [],
     rc.searchMatchNodeIds,
     rc.animationTime,
+    rc.isAtlas,
   )
 
   // 4. Planning overlays (flags + solver preview)

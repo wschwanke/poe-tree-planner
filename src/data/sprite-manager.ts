@@ -11,7 +11,7 @@ export class SpriteManager {
   private assetBasePath: string
   private filenameMap: Record<string, string> = {}
 
-  constructor(data: SkillTreeData, assetBasePath = '/assets/skill-tree/') {
+  constructor(data: SkillTreeData, assetBasePath = '/assets/') {
     this.data = data
     this.assetBasePath = assetBasePath
   }

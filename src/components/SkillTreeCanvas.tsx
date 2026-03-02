@@ -136,6 +136,12 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
 
   const handleCanvasNodeClick = useCallback(
     (event: NodeClickEvent) => {
+      // Atlas mastery nodes are decorative — ignore all clicks
+      if (isAtlas) {
+        const pn = merged.processedNodes.get(event.nodeId)
+        if (pn?.node.isMastery) return
+      }
+
       if (planningActive) {
         const flag: PlanningFlag = event.button === 2 ? 'blocked' : 'required'
         toggleFlag(event.nodeId, flag)
@@ -383,8 +389,8 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
         dirtyRef.current = true
       }
 
-      // Animate search highlights — only dirty if there's an active search
-      if (searchState.matchingNodeIds.size > 0) {
+      // Animate search highlights or atlas can-allocate pulse
+      if (searchState.matchingNodeIds.size > 0 || (isAtlas && canAllocateNodes.size > 0)) {
         dirtyRef.current = true
       }
 
@@ -413,6 +419,7 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
               }
             : null,
           solverPreview: planningState.solverPreview,
+          isAtlas,
         })
       }
 

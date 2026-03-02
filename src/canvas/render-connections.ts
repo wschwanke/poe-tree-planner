@@ -65,6 +65,7 @@ export function renderConnections(
   data: SkillTreeData,
   hoveredPath: string[] = [],
   solverPreview: Set<string> = new Set(),
+  hoveredNodeId: string | null = null,
 ): void {
   const rendered = new Set<string>()
 
@@ -89,6 +90,9 @@ export function renderConnections(
       const nodeB = processedNodes.get(neighborId)
       if (!nodeB) continue
       if (nodeB.node.isProxy || nodeB.node.isMastery) continue
+
+      // Skip wormhole-to-wormhole connections (cross-map teleport links)
+      if (nodeA.node.isWormhole && nodeB.node.isWormhole) continue
 
       // Cull off-screen connections
       const midX = (nodeA.worldX + nodeB.worldX) / 2
@@ -378,6 +382,63 @@ export function renderConnections(
       ctx.arc(cx, cy, radius, startAngle, endAngle, counterclockwise)
     }
   }
+  ctx.stroke()
+  ctx.restore()
+
+  // Draw wormhole hover link — dotted glowing line between wormhole pairs
+  renderWormholeHoverLink(ctx, processedNodes, adjacency, viewport, hoveredNodeId)
+}
+
+function renderWormholeHoverLink(
+  ctx: CanvasRenderingContext2D,
+  processedNodes: Map<string, ProcessedNode>,
+  adjacency: Map<string, Set<string>>,
+  viewport: ViewportState,
+  hoveredNodeId: string | null,
+): void {
+  if (!hoveredNodeId) return
+  const hovered = processedNodes.get(hoveredNodeId)
+  if (!hovered?.node.isWormhole) return
+
+  // Find wormhole partner
+  const neighbors = adjacency.get(hoveredNodeId)
+  if (!neighbors) return
+  let partnerId: string | null = null
+  for (const nid of neighbors) {
+    const pn = processedNodes.get(nid)
+    if (pn?.node.isWormhole) {
+      partnerId = nid
+      break
+    }
+  }
+  if (!partnerId) return
+  const partner = processedNodes.get(partnerId)
+  if (!partner) return
+
+  const [sx1, sy1] = worldToScreen(hovered.worldX, hovered.worldY, viewport)
+  const [sx2, sy2] = worldToScreen(partner.worldX, partner.worldY, viewport)
+
+  const dashLen = Math.max(4, 8 * viewport.zoom)
+
+  // Glow pass
+  ctx.save()
+  ctx.strokeStyle = '#a78bfa'
+  ctx.globalAlpha = 0.3
+  ctx.lineWidth = Math.max(4, 10 * viewport.zoom)
+  ctx.lineCap = 'round'
+  ctx.setLineDash([dashLen, dashLen])
+  ctx.beginPath()
+  ctx.moveTo(sx1, sy1)
+  ctx.lineTo(sx2, sy2)
+  ctx.stroke()
+
+  // Main line pass
+  ctx.strokeStyle = '#a78bfa'
+  ctx.globalAlpha = 0.7
+  ctx.lineWidth = Math.max(2, 3.5 * viewport.zoom)
+  ctx.beginPath()
+  ctx.moveTo(sx1, sy1)
+  ctx.lineTo(sx2, sy2)
   ctx.stroke()
   ctx.restore()
 }

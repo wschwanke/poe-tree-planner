@@ -31,14 +31,9 @@ export function buildSearchIndex(processedNodes: Map<string, ProcessedNode>): Ma
 
     if (n.stats) parts.push(n.stats.join('\n'))
 
-    if (n.reminderText) parts.push(n.reminderText.join('\n'))
-
-    if (n.flavourText) parts.push(n.flavourText.join('\n'))
-
     if (n.masteryEffects) {
       for (const effect of n.masteryEffects) {
         parts.push(effect.stats.join('\n'))
-        if (effect.reminderText) parts.push(effect.reminderText.join('\n'))
       }
     }
 
