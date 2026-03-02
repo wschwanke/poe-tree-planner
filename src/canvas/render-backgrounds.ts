@@ -9,7 +9,7 @@ const SKILL_BG_CENTER_Y = 0
 const SKILL_BG_WIDTH = 26000
 const SKILL_BG_HEIGHT = 21000
 const SKILL_BG_SCALE = 1.1
-const SKILL_BG_OPACITY = 0.4
+const SKILL_BG_OPACITY = 0.7
 
 // Atlas tree background
 const ATLAS_BG_CENTER_X = -75

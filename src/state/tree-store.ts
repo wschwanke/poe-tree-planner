@@ -79,6 +79,7 @@ interface TreeState {
     allocatedNodeIds: string[]
     masteryEffects: Record<string, number>
     banditChoice: BanditChoice
+    treeMode?: TreeMode
   }) => void
   undo: () => void
   reset: () => void
@@ -562,18 +563,21 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
   loadSnapshot(snapshot) {
     const { adjacency } = get()
+    const mode = snapshot.treeMode ?? 'skill'
     const allocatedNodes = new Set<string>(snapshot.allocatedNodeIds)
     const masteryEffects = new Map(Object.entries(snapshot.masteryEffects).map(([k, v]) => [k, v]))
     const canAllocateNodes = computeCanAllocateNodes(allocatedNodes, adjacency)
-    localStorage.setItem('poe-tree-selected-class', String(snapshot.classId))
-    localStorage.setItem('poe-tree-bandit-choice', snapshot.banditChoice)
+    if (mode !== 'atlas') {
+      localStorage.setItem('poe-tree-selected-class', String(snapshot.classId))
+      localStorage.setItem('poe-tree-bandit-choice', snapshot.banditChoice)
+    }
     set({
       selectedClass: snapshot.classId,
       classStartNodeId: snapshot.classStartNodeId,
       allocatedNodes,
       selectedMasteryEffects: masteryEffects,
       banditChoice: snapshot.banditChoice,
-      totalPoints: computeTotalPoints(snapshot.classId, snapshot.banditChoice, 'skill'),
+      totalPoints: computeTotalPoints(snapshot.classId, snapshot.banditChoice, mode),
       canAllocateNodes,
       pointsUsed: allocatedNodes.size - 1,
       hoveredNodeId: null,

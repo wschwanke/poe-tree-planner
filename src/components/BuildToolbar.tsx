@@ -17,11 +17,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useBuildStore } from '@/state/build-store'
+import type { TreeMode } from '@/types/skill-tree'
 
-export function BuildToolbar() {
+interface BuildToolbarProps {
+  treeMode: TreeMode
+}
+
+export function BuildToolbar({ treeMode }: BuildToolbarProps) {
   const activeBuildId = useBuildStore((s) => s.activeBuildId)
   const activeStepId = useBuildStore((s) => s.activeStepId)
-  const builds = useBuildStore((s) => s.builds)
+  const allBuilds = useBuildStore((s) => s.builds)
+  const builds = allBuilds.filter((b) => b.treeMode === treeMode)
   const openBuildManager = useBuildStore((s) => s.openBuildManager)
   const saveCurrentToStep = useBuildStore((s) => s.saveCurrentToStep)
   const loadStepToTree = useBuildStore((s) => s.loadStepToTree)

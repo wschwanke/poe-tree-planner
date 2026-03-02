@@ -1,7 +1,8 @@
 import type { ProcessedNode } from '@/types/skill-tree'
 
 export interface AggregatedStat {
-  description: string
+  /** Template string with `#` where the numeric value goes (e.g. "# to Strength", "Minions have #% increased maximum Life") */
+  template: string
   value: number | null
   isKeystone: boolean
 }
@@ -11,19 +12,30 @@ export interface MasteryStat {
   stats: string[]
 }
 
-const STAT_PATTERN = /^([+-]?\d+\.?\d*)(%?)\s+(.+)$/
+// Matches the first numeric value (with optional +/-) and optional % suffix anywhere in the string
+const EMBEDDED_NUM = /([+-]?\d+\.?\d*)(%)?\s*/
 
-function parseStat(line: string, statMap: Map<string, number>, keystoneStats: string[]): void {
+function parseStat(
+  line: string,
+  statMap: Map<string, number>,
+  keystoneStats: Set<string>,
+): void {
   const trimmed = line.trim()
   if (!trimmed) return
-  const match = trimmed.match(STAT_PATTERN)
-  if (match) {
-    const value = parseFloat(match[1])
-    const percent = match[2]
-    const desc = `${percent} ${match[3]}`.trim()
-    statMap.set(desc, (statMap.get(desc) ?? 0) + value)
+
+  const match = trimmed.match(EMBEDDED_NUM)
+  if (match && match.index !== undefined) {
+    const value = Number.parseFloat(match[1])
+    const pct = match[2] ?? ''
+    const before = trimmed.slice(0, match.index)
+    const after = trimmed.slice(match.index + match[0].length)
+    // Preserve `+` sign convention in template when the original stat had it
+    const hadSign = match[1].startsWith('+') || match[1].startsWith('-')
+    const signMarker = hadSign ? '+' : ''
+    const template = `${before}${signMarker}#${pct} ${after}`.replace(/\s+/g, ' ').trim()
+    statMap.set(template, (statMap.get(template) ?? 0) + value)
   } else {
-    keystoneStats.push(trimmed)
+    keystoneStats.add(trimmed)
   }
 }
 
@@ -33,7 +45,7 @@ export function aggregateStats(
   selectedMasteryEffects?: Map<string, number>,
 ): { stats: AggregatedStat[]; masteryStats: MasteryStat[] } {
   const statMap = new Map<string, number>()
-  const keystoneStats: string[] = []
+  const keystoneStats = new Set<string>()
 
   for (const nodeId of allocatedNodes) {
     const pn = processedNodes.get(nodeId)
@@ -69,28 +81,30 @@ export function aggregateStats(
 
   const result: AggregatedStat[] = []
 
-  // Sort numeric stats by description
+  // Sort numeric stats by template
   const sorted = Array.from(statMap.entries()).sort((a, b) => a[0].localeCompare(b[0]))
-  for (const [desc, value] of sorted) {
-    result.push({ description: desc, value, isKeystone: false })
+  for (const [template, value] of sorted) {
+    result.push({ template, value, isKeystone: false })
   }
 
-  // Add keystone/non-numeric stats
+  // Add keystone/non-numeric stats (deduplicated)
   for (const stat of keystoneStats) {
-    result.push({ description: stat, value: null, isKeystone: true })
+    result.push({ template: stat, value: null, isKeystone: true })
   }
 
   return { stats: result, masteryStats }
 }
 
 export function formatStatValue(stat: AggregatedStat): string {
-  if (stat.value === null) return stat.description
+  if (stat.value === null) return stat.template
 
-  const sign = stat.value >= 0 ? '+' : ''
-  const desc = stat.description
-  // Check if description starts with % (from our aggregation format)
-  if (desc.startsWith('% ')) {
-    return `${sign}${stat.value}% ${desc.slice(2)}`
+  const value = stat.value
+  const numStr = Number.isInteger(value) ? String(value) : value.toFixed(1)
+
+  // Template uses `+#` when the original stat had a sign prefix (e.g. "+10 to Strength")
+  if (stat.template.includes('+#')) {
+    const signed = value >= 0 ? `+${numStr}` : String(numStr)
+    return stat.template.replace('+#', signed)
   }
-  return `${sign}${stat.value} ${desc}`
+  return stat.template.replace('#', numStr)
 }

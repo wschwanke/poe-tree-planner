@@ -10,10 +10,15 @@ export class SpriteManager {
   private data: SkillTreeData
   private assetBasePath: string
   private filenameMap: Record<string, string> = {}
+  private onLoad: (() => void) | null = null
 
   constructor(data: SkillTreeData, assetBasePath = '/assets/') {
     this.data = data
     this.assetBasePath = assetBasePath
+  }
+
+  setOnLoad(callback: () => void): void {
+    this.onLoad = callback
   }
 
   private getLocalFilename(cdnUrl: string): string {
@@ -64,6 +69,7 @@ export class SpriteManager {
 
     img.onload = () => {
       sprite.ready = true
+      this.onLoad?.()
     }
     img.onerror = () => {
       /* silently skip failed loads */
@@ -88,6 +94,15 @@ export class SpriteManager {
   preloadAllCategories(zoom: number): void {
     for (const cat of Object.keys(this.data.sprites)) {
       this.preloadCategory(cat, zoom)
+    }
+    // Always preload max zoom sprites since node icons always use them
+    const maxZoomKey = String(this.data.imageZoomLevels[this.getMaxZoomLevelIndex()])
+    for (const [, spriteSheet] of Object.entries(this.data.sprites)) {
+      const variant = spriteSheet[maxZoomKey]
+      if (variant) {
+        const localPath = this.getLocalFilename(variant.filename)
+        this.loadImage(localPath)
+      }
     }
   }
 

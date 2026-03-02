@@ -50,7 +50,7 @@ export function StatSummaryPanel({
             )}
             {keystoneStats.map((stat, i) => (
               <p key={`k-${i}`} className="text-sm text-amber-300 leading-relaxed">
-                {stat.description}
+                {stat.template}
               </p>
             ))}
             {masteryStats.length > 0 && (

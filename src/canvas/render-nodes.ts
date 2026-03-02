@@ -30,16 +30,6 @@ const FRAME_MAP: Record<string, { unallocated: string; canAllocate: string; allo
   },
 }
 
-const ICON_SCALE: Record<NodeType, number> = {
-  normal: 1.0,
-  notable: 1.0,
-  keystone: 1.0,
-  mastery: 1.0,
-  jewelSocket: 1.0,
-  classStart: 1.0,
-  wormhole: 1.0,
-}
-
 function getIconCategory(type: NodeType, allocated: boolean): string {
   switch (type) {
     case 'keystone':
@@ -192,9 +182,8 @@ export function renderNodes(
 
     const useAtlasPulse = isAtlas && isCanAllocate && !isAllocated
 
-    // Draw icon first (behind the frame)
+    // Draw icon first (behind the frame) — always use max zoom sprites for sharpness
     if (pn.type === 'mastery') {
-      const iconScale = sprites.getScaleFactor(viewport.zoom) * ICON_SCALE[pn.type]
       if (isAllocated && pn.node.activeIcon) {
         sprites.drawSprite(
           ctx,
@@ -203,7 +192,8 @@ export function renderNodes(
           sx,
           sy,
           viewport.zoom,
-          iconScale,
+          undefined,
+          true,
         )
       } else if (pn.node.inactiveIcon) {
         sprites.drawSprite(
@@ -213,23 +203,22 @@ export function renderNodes(
           sx,
           sy,
           viewport.zoom,
-          iconScale,
+          undefined,
+          true,
         )
       } else if (pn.node.icon) {
         // Atlas mastery: decorative icon, use 'mastery' sprite category
-        sprites.drawSprite(ctx, 'mastery', pn.node.icon, sx, sy, viewport.zoom, iconScale)
+        sprites.drawSprite(ctx, 'mastery', pn.node.icon, sx, sy, viewport.zoom, undefined, true)
       }
     } else if (pn.type === 'wormhole') {
       // Wormhole nodes use a fixed coord key, not the node's icon path
       const category = getIconCategory(pn.type, isAllocated)
-      const iconScale = sprites.getScaleFactor(viewport.zoom) * ICON_SCALE[pn.type]
-      sprites.drawSprite(ctx, category, 'Wormhole', sx, sy, viewport.zoom, iconScale)
+      sprites.drawSprite(ctx, category, 'Wormhole', sx, sy, viewport.zoom, undefined, true)
     } else {
       const iconPath = pn.node.icon
       if (iconPath) {
         const category = getIconCategory(pn.type, isAllocated)
-        const iconScale = sprites.getScaleFactor(viewport.zoom) * ICON_SCALE[pn.type]
-        sprites.drawSprite(ctx, category, iconPath, sx, sy, viewport.zoom, iconScale)
+        sprites.drawSprite(ctx, category, iconPath, sx, sy, viewport.zoom, undefined, true)
       } else if (id.startsWith('cv:')) {
         // Virtual cluster node — draw a colored circle fill as the icon
         const fillRadius = (pn.type === 'jewelSocket' ? 24 : 18) * viewport.zoom
@@ -270,7 +259,6 @@ export function renderNodes(
       ctx.globalAlpha = 0.33
       if (pn.type === 'mastery') {
         if (pn.node.activeIcon) {
-          const iconScale = sprites.getScaleFactor(viewport.zoom) * ICON_SCALE[pn.type]
           sprites.drawSprite(
             ctx,
             'masteryActiveSelected',
@@ -278,15 +266,15 @@ export function renderNodes(
             sx,
             sy,
             viewport.zoom,
-            iconScale,
+            undefined,
+            true,
           )
         }
       } else {
         const iconPath = pn.type === 'wormhole' ? 'Wormhole' : pn.node.icon
         if (iconPath) {
           const activeCategory = getIconCategory(pn.type, true)
-          const iconScale = sprites.getScaleFactor(viewport.zoom) * ICON_SCALE[pn.type]
-          sprites.drawSprite(ctx, activeCategory, iconPath, sx, sy, viewport.zoom, iconScale)
+          sprites.drawSprite(ctx, activeCategory, iconPath, sx, sy, viewport.zoom, undefined, true)
         }
         const activeFrame = FRAME_MAP[pn.type]
         if (activeFrame) {
@@ -308,7 +296,7 @@ export function renderNodes(
       const pulseAlpha = 0.3 + pulsePhase * 0.7
 
       ctx.save()
-      for (const [id, pn] of masteryNodes) {
+      for (const [, pn] of masteryNodes) {
         const siblingIcon = pn.node.inactiveIcon ?? pn.node.icon
         if (siblingIcon !== hoveredMasteryIcon) continue
 

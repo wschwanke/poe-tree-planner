@@ -1,6 +1,8 @@
 import { create } from 'zustand'
-import type { Build, BuildStep } from '@/types/build'
-import { useTreeStore } from '@/state/tree-store'
+import type { Build, BuildStep, ExportedBuild } from '@/types/build'
+import type { TreeMode } from '@/types/skill-tree'
+import { ATLAS_START_NODE, useTreeStore } from '@/state/tree-store'
+import { decodeBuild, encodeBuild } from '@/data/build-codec'
 
 const STORAGE_KEY = 'poe-tree-builds'
 
@@ -39,7 +41,7 @@ interface BuildStore {
   closePoBExport: () => void
 
   // Build CRUD
-  createBuild: (name: string) => void
+  createBuild: (name: string, treeMode: TreeMode) => void
   deleteBuild: (buildId: string) => void
   renameBuild: (buildId: string, name: string) => void
   duplicateBuild: (buildId: string) => void
@@ -56,6 +58,10 @@ interface BuildStore {
   // Snapshot bridge
   saveCurrentToStep: (buildId: string, stepId: string) => void
   loadStepToTree: (buildId: string, stepId: string) => void
+
+  // Export/Import
+  exportBuild: (buildId: string) => string | null
+  importBuild: (encoded: string, treeMode: TreeMode) => { success: boolean; error?: string }
 }
 
 function persist(builds: Build[]) {
@@ -69,7 +75,11 @@ function persist(builds: Build[]) {
 function hydrate(): Build[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw)
+    if (raw) {
+      const builds = JSON.parse(raw) as Build[]
+      // Migration: default treeMode to 'skill' for legacy builds
+      return builds.map((b) => (b.treeMode ? b : { ...b, treeMode: 'skill' as TreeMode }))
+    }
   } catch {
     // Corrupt data
   }
@@ -82,6 +92,11 @@ function findBuild(builds: Build[], buildId: string): Build | undefined {
 
 function updateBuild(builds: Build[], buildId: string, updater: (b: Build) => Build): Build[] {
   return builds.map((b) => (b.id === buildId ? updater(b) : b))
+}
+
+function resolveStartNode(build: Build, classId: number): string {
+  if (build.treeMode === 'atlas') return ATLAS_START_NODE
+  return findClassStartNode(classId)
 }
 
 export const useBuildStore = create<BuildStore>((set, get) => ({
@@ -104,20 +119,24 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
     set({ pobExportOpen: false })
   },
 
-  createBuild(name) {
+  createBuild(name, treeMode) {
     const tree = useTreeStore.getState()
-    const classId = tree.selectedClass ?? 0
-    const banditChoice = tree.banditChoice
+    const isAtlas = treeMode === 'atlas'
+    const classId = isAtlas ? 0 : (tree.selectedClass ?? 0)
+    const banditChoice = isAtlas ? 'none' : tree.banditChoice
     const allocatedNodeIds = [...tree.allocatedNodes]
     const masteryEffects: Record<string, number> = {}
-    for (const [k, v] of tree.selectedMasteryEffects) {
-      masteryEffects[k] = v
+    if (!isAtlas) {
+      for (const [k, v] of tree.selectedMasteryEffects) {
+        masteryEffects[k] = v
+      }
     }
 
     const step = createStep('Step 1', classId, allocatedNodeIds, masteryEffects)
     const build: Build = {
       id: generateId(),
       name,
+      treeMode,
       classId,
       banditChoice,
       activeStepId: step.id,
@@ -184,10 +203,11 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
     if (step) {
       useTreeStore.getState().loadSnapshot({
         classId: step.classId,
-        classStartNodeId: findClassStartNode(step.classId),
+        classStartNodeId: resolveStartNode(build, step.classId),
         allocatedNodeIds: step.allocatedNodeIds,
         masteryEffects: step.masteryEffects,
         banditChoice: build.banditChoice,
+        treeMode: build.treeMode,
       })
     }
   },
@@ -219,10 +239,11 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
     // Load the new step into the tree
     useTreeStore.getState().loadSnapshot({
       classId: step.classId,
-      classStartNodeId: findClassStartNode(step.classId),
+      classStartNodeId: resolveStartNode(build, step.classId),
       allocatedNodeIds: step.allocatedNodeIds,
       masteryEffects: step.masteryEffects,
       banditChoice: build.banditChoice,
+      treeMode: build.treeMode,
     })
 
     return stepId
@@ -295,17 +316,21 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
 
   saveCurrentToStep(buildId, stepId) {
     const tree = useTreeStore.getState()
+    const build = findBuild(get().builds, buildId)
+    const isAtlas = build?.treeMode === 'atlas'
     const allocatedNodeIds = [...tree.allocatedNodes]
     const masteryEffects: Record<string, number> = {}
-    for (const [k, v] of tree.selectedMasteryEffects) {
-      masteryEffects[k] = v
+    if (!isAtlas) {
+      for (const [k, v] of tree.selectedMasteryEffects) {
+        masteryEffects[k] = v
+      }
     }
-    const classId = tree.selectedClass ?? 0
+    const classId = isAtlas ? 0 : (tree.selectedClass ?? 0)
 
     const builds = updateBuild(get().builds, buildId, (b) => ({
       ...b,
       classId,
-      banditChoice: tree.banditChoice,
+      banditChoice: isAtlas ? 'none' : tree.banditChoice,
       steps: b.steps.map((s) =>
         s.id === stepId
           ? { ...s, classId, allocatedNodeIds, masteryEffects }
@@ -333,11 +358,56 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
 
     useTreeStore.getState().loadSnapshot({
       classId: step.classId,
-      classStartNodeId: findClassStartNode(step.classId),
+      classStartNodeId: resolveStartNode(build, step.classId),
       allocatedNodeIds: step.allocatedNodeIds,
       masteryEffects: step.masteryEffects,
       banditChoice: build.banditChoice,
+      treeMode: build.treeMode,
     })
+  },
+
+  exportBuild(buildId) {
+    const build = findBuild(get().builds, buildId)
+    if (!build) return null
+    return encodeBuild(build)
+  },
+
+  importBuild(encoded, treeMode) {
+    const result = decodeBuild(encoded)
+    if ('error' in result) return { success: false, error: result.error }
+
+    const data = result as ExportedBuild
+    if (data.treeMode !== treeMode) {
+      return {
+        success: false,
+        error: `This is a ${data.treeMode} build but you're in ${treeMode} mode`,
+      }
+    }
+
+    const steps = data.steps.map((s, i) =>
+      createStep(s.name || `Step ${i + 1}`, s.classId, s.allocatedNodeIds, s.masteryEffects),
+    )
+    // Preserve descriptions and ascendClassIds from import
+    for (let i = 0; i < steps.length; i++) {
+      steps[i].description = data.steps[i].description ?? ''
+      steps[i].ascendClassId = data.steps[i].ascendClassId ?? 0
+    }
+
+    const build: Build = {
+      id: generateId(),
+      name: data.name,
+      treeMode: data.treeMode,
+      classId: data.classId,
+      banditChoice: data.banditChoice,
+      activeStepId: steps[0].id,
+      steps,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+    const builds = [...get().builds, build]
+    persist(builds)
+    set({ builds })
+    return { success: true }
   },
 }))
 

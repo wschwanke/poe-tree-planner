@@ -319,6 +319,13 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [dirtyRef, merged.adjacency, merged.processedNodes])
 
+  // Mark canvas dirty when any sprite image finishes loading
+  useEffect(() => {
+    sprites.setOnLoad(() => {
+      dirtyRef.current = true
+    })
+  }, [sprites, dirtyRef])
+
   // Preload sprites when zoom level changes (not on every fractional zoom)
   const lastPreloadZoomRef = useRef<string>('')
   useEffect(() => {
@@ -592,7 +599,7 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
             >
               {planningActive ? 'Planning' : 'Plan'}
             </Button>
-            {!isAtlas && <BuildToolbar />}
+            <BuildToolbar treeMode={treeMode} />
             <div className="w-px h-5 bg-stone-700/60" />
           </>
         )}
@@ -678,13 +685,10 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
         )
       )}
 
-      {/* Build management (skill tree only) */}
-      {!isAtlas && (
-        <>
-          <BuildManager />
-          <PoBExportDialog />
-        </>
-      )}
+      {/* Build management */}
+      <BuildManager treeMode={treeMode} />
+      {/* PoB export (skill tree only) */}
+      {!isAtlas && <PoBExportDialog />}
     </div>
   )
 }
