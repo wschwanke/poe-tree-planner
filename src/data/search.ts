@@ -56,8 +56,6 @@ function detectMatchField(query: string, pn: ProcessedNode): string {
   if (n.name?.toLowerCase().includes(q)) return 'name'
   if (TYPE_LABELS[pn.type]?.includes(q)) return 'type'
   if (n.stats?.some((s) => s.toLowerCase().includes(q))) return 'stats'
-  if (n.reminderText?.some((s) => s.toLowerCase().includes(q))) return 'reminder'
-  if (n.flavourText?.some((s) => s.toLowerCase().includes(q))) return 'flavour'
   if (n.masteryEffects?.some((e) => e.stats.some((s) => s.toLowerCase().includes(q))))
     return 'mastery effect'
   if (n.ascendancyName?.toLowerCase().includes(q)) return 'ascendancy'

@@ -80,6 +80,9 @@ export function renderNodes(
 ): void {
   const useLOD = viewport.zoom < LOD_ZOOM_THRESHOLD
 
+  // Pulsing opacity for atlas can-allocate nodes
+  const atlasPulseAlpha = isAtlas ? 0.35 + 0.25 * ((Math.sin(animationTime * 0.003) + 1) / 2) : 1
+
   // Render class start decorations first
   for (const [, pn] of processedNodes) {
     if (pn.type !== 'classStart') continue
@@ -172,21 +175,13 @@ export function renderNodes(
   // Full render order for search highlights (includes LOD nodes)
   const renderOrder = [...normalNodes, ...masteryNodes, ...notableNodes, ...keystoneNodes]
 
-  // Pulsing opacity for atlas can-allocate nodes
-  const atlasPulseAlpha = isAtlas ? 0.35 + 0.25 * ((Math.sin(animationTime * 0.003) + 1) / 2) : 1
-
   for (const [id, pn] of spriteNodes) {
     const [sx, sy] = worldToScreen(pn.worldX, pn.worldY, viewport)
     const isAllocated = allocatedNodes.has(id)
     const isCanAllocate = canAllocateNodes.has(id)
     const isHovered = id === hoveredNodeId
 
-    // Atlas can-allocate nodes: reduced pulsing opacity
     const useAtlasPulse = isAtlas && isCanAllocate && !isAllocated
-    if (useAtlasPulse) {
-      ctx.save()
-      ctx.globalAlpha = atlasPulseAlpha
-    }
 
     // Draw icon first (behind the frame)
     if (pn.type === 'mastery') {
@@ -245,16 +240,19 @@ export function renderNodes(
     // Draw frame on top to mask square icon edges
     const frameInfo = FRAME_MAP[pn.type]
     if (frameInfo) {
+      if (useAtlasPulse) {
+        ctx.save()
+        ctx.globalAlpha = atlasPulseAlpha
+      }
       const frameKey = isAllocated
         ? frameInfo.allocated
         : isCanAllocate
           ? frameInfo.canAllocate
           : frameInfo.unallocated
       sprites.drawSprite(ctx, 'frame', frameKey, sx, sy, viewport.zoom)
-    }
-
-    if (useAtlasPulse) {
-      ctx.restore()
+      if (useAtlasPulse) {
+        ctx.restore()
+      }
     }
 
     // Hover preview: draw the allocated appearance at 33% opacity
