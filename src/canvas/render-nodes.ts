@@ -70,9 +70,6 @@ export function renderNodes(
 ): void {
   const useLOD = viewport.zoom < LOD_ZOOM_THRESHOLD
 
-  // Pulsing alpha for can-allocate outline effects
-  const canAllocatePulseAlpha = 0.3 + 0.7 * ((Math.sin(animationTime * 0.003) + 1) / 2)
-
   // Render start node decorations
   if (isAtlas) {
     // Atlas start node: root is at the origin but has no group, so draw manually
@@ -242,22 +239,6 @@ export function renderNodes(
       sprites.drawSprite(ctx, 'frame', frameKey, sx, sy, viewport.zoom)
     }
 
-    // Pulsing outline glow for can-allocate nodes
-    if (isCanAllocate && !isAllocated) {
-      const nodeRadius = getNodeRadius(pn.type) * viewport.zoom
-      const spread = Math.max(3, 5 * viewport.zoom)
-      const lineW = Math.max(1.5, 2.5 * viewport.zoom)
-
-      ctx.save()
-      ctx.beginPath()
-      ctx.arc(sx, sy, nodeRadius + spread, 0, Math.PI * 2)
-      ctx.strokeStyle = `rgba(200, 176, 116, ${canAllocatePulseAlpha * 0.6})`
-      ctx.lineWidth = lineW
-      ctx.shadowColor = `rgba(200, 176, 116, ${canAllocatePulseAlpha * 0.3})`
-      ctx.shadowBlur = Math.max(4, spread * 2)
-      ctx.stroke()
-      ctx.restore()
-    }
 
     // Hover preview: draw the allocated appearance at 33% opacity
     if ((isHovered || hoveredPathSet.has(id)) && !isAllocated) {
