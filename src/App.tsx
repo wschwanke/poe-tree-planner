@@ -1,16 +1,23 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { SkillTreeCanvas } from '@/components/SkillTreeCanvas'
+import { getPref, loadPreferences, savePreference } from '@/data/persistence'
 import { useSkillTree } from '@/hooks/useSkillTree'
+import { useBuildStore } from '@/state/build-store'
 import type { TreeMode } from '@/types/skill-tree'
 
 function App() {
-  const [treeMode, setTreeMode] = useState<TreeMode>(
-    () => (localStorage.getItem('poe-tree-mode') as TreeMode) || 'skill',
-  )
+  const [treeMode, setTreeMode] = useState<TreeMode>('skill')
   const { context, loading, error } = useSkillTree(treeMode)
 
+  useEffect(() => {
+    loadPreferences().then(() => {
+      setTreeMode((getPref('tree-mode', 'skill') as TreeMode) || 'skill')
+    })
+    useBuildStore.getState().loadBuilds()
+  }, [])
+
   const handleTreeModeChange = (mode: TreeMode) => {
-    localStorage.setItem('poe-tree-mode', mode)
+    savePreference('tree-mode', mode)
     setTreeMode(mode)
   }
 

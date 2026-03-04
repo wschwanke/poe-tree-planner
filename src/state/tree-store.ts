@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { type PathResult, findShortestPath, getConnectedComponent } from '@/data/graph'
+import { getPref, savePreference } from '@/data/persistence'
 import { useClusterStore } from '@/state/cluster-store'
 import type { ProcessedNode, TreeMode } from '@/types/skill-tree'
 
@@ -165,7 +166,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   hoveredNodeId: null,
   selectedMasteryEffects: new Map<string, number>(),
   masteryDialogNodeId: null,
-  banditChoice: (localStorage.getItem('poe-tree-bandit-choice') as BanditChoice) || 'none',
+  banditChoice: (getPref('bandit-choice', 'none') as BanditChoice),
 
   // Undo history
   undoStack: [],
@@ -176,7 +177,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   adjacency: null,
   totalPoints: computeTotalPoints(
     null,
-    (localStorage.getItem('poe-tree-bandit-choice') as BanditChoice) || 'none',
+    (getPref('bandit-choice', 'none') as BanditChoice),
     'skill',
   ),
 
@@ -232,7 +233,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
   setBanditChoice(choice) {
     const { selectedClass, treeMode } = get()
-    localStorage.setItem('poe-tree-bandit-choice', choice)
+    savePreference('bandit-choice', choice)
     set({
       banditChoice: choice,
       totalPoints: computeTotalPoints(selectedClass, choice, treeMode),
@@ -568,8 +569,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     const masteryEffects = new Map(Object.entries(snapshot.masteryEffects).map(([k, v]) => [k, v]))
     const canAllocateNodes = computeCanAllocateNodes(allocatedNodes, adjacency)
     if (mode !== 'atlas') {
-      localStorage.setItem('poe-tree-selected-class', String(snapshot.classId))
-      localStorage.setItem('poe-tree-bandit-choice', snapshot.banditChoice)
+      savePreference('selected-class', String(snapshot.classId))
+      savePreference('bandit-choice', snapshot.banditChoice)
     }
     set({
       selectedClass: snapshot.classId,

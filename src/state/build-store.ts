@@ -3,6 +3,7 @@ import type { Build, BuildStep, ExportedBuild } from '@/types/build'
 import type { TreeMode } from '@/types/skill-tree'
 import { ATLAS_START_NODE, useTreeStore } from '@/state/tree-store'
 import { decodeBuild, encodeBuild } from '@/data/build-codec'
+import { loadBuilds as fetchBuilds, saveBuilds } from '@/data/persistence'
 
 const STORAGE_KEY = 'poe-tree-builds'
 
@@ -29,10 +30,14 @@ function createStep(
 
 interface BuildStore {
   builds: Build[]
+  isLoading: boolean
   activeBuildId: string | null
   activeStepId: string | null
   buildManagerOpen: boolean
   pobExportOpen: boolean
+
+  // Async init
+  loadBuilds: () => Promise<void>
 
   // UI
   openBuildManager: () => void
@@ -64,26 +69,10 @@ interface BuildStore {
   importBuild: (encoded: string, treeMode: TreeMode) => { success: boolean; error?: string }
 }
 
-function persist(builds: Build[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(builds))
-  } catch {
-    // Storage full or unavailable
-  }
-}
+let _suppressAutoSave = false
 
-function hydrate(): Build[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) {
-      const builds = JSON.parse(raw) as Build[]
-      // Migration: default treeMode to 'skill' for legacy builds
-      return builds.map((b) => (b.treeMode ? b : { ...b, treeMode: 'skill' as TreeMode }))
-    }
-  } catch {
-    // Corrupt data
-  }
-  return []
+function persist(builds: Build[]) {
+  saveBuilds(builds)
 }
 
 function findBuild(builds: Build[], buildId: string): Build | undefined {
@@ -100,11 +89,33 @@ function resolveStartNode(build: Build, classId: number): string {
 }
 
 export const useBuildStore = create<BuildStore>((set, get) => ({
-  builds: hydrate(),
+  builds: [],
+  isLoading: true,
   activeBuildId: null,
   activeStepId: null,
   buildManagerOpen: false,
   pobExportOpen: false,
+
+  async loadBuilds() {
+    let builds = await fetchBuilds()
+    // One-time migration: if SQLite is empty but localStorage has data, migrate it
+    if (builds.length === 0) {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY)
+        if (raw) {
+          const legacy = JSON.parse(raw) as Build[]
+          if (legacy.length > 0) {
+            builds = legacy.map((b) => (b.treeMode ? b : { ...b, treeMode: 'skill' as TreeMode }))
+            persist(builds)
+            localStorage.removeItem(STORAGE_KEY)
+          }
+        }
+      } catch {
+        // Corrupt localStorage data — ignore
+      }
+    }
+    set({ builds, isLoading: false })
+  },
 
   openBuildManager() {
     set({ buildManagerOpen: true })
@@ -201,6 +212,7 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
     // Load the active step into the tree
     const step = build.steps.find((s) => s.id === build.activeStepId)
     if (step) {
+      _suppressAutoSave = true
       useTreeStore.getState().loadSnapshot({
         classId: step.classId,
         classStartNodeId: resolveStartNode(build, step.classId),
@@ -209,6 +221,7 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
         banditChoice: build.banditChoice,
         treeMode: build.treeMode,
       })
+      _suppressAutoSave = false
     }
   },
 
@@ -237,6 +250,7 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
     set({ builds, activeStepId: stepId })
 
     // Load the new step into the tree
+    _suppressAutoSave = true
     useTreeStore.getState().loadSnapshot({
       classId: step.classId,
       classStartNodeId: resolveStartNode(build, step.classId),
@@ -245,6 +259,7 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
       banditChoice: build.banditChoice,
       treeMode: build.treeMode,
     })
+    _suppressAutoSave = false
 
     return stepId
   },
@@ -356,6 +371,7 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
     persist(builds)
     set({ builds, activeStepId: stepId })
 
+    _suppressAutoSave = true
     useTreeStore.getState().loadSnapshot({
       classId: step.classId,
       classStartNodeId: resolveStartNode(build, step.classId),
@@ -364,6 +380,7 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
       banditChoice: build.banditChoice,
       treeMode: build.treeMode,
     })
+    _suppressAutoSave = false
   },
 
   exportBuild(buildId) {
@@ -410,6 +427,16 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
     return { success: true }
   },
 }))
+
+// Auto-save tree changes to the active step
+useTreeStore.subscribe((state, prev) => {
+  if (_suppressAutoSave) return
+  if (state.allocatedNodes === prev.allocatedNodes && state.selectedMasteryEffects === prev.selectedMasteryEffects) return
+  const { activeBuildId, activeStepId } = useBuildStore.getState()
+  if (activeBuildId && activeStepId) {
+    useBuildStore.getState().saveCurrentToStep(activeBuildId, activeStepId)
+  }
+})
 
 function findClassStartNode(classId: number): string {
   const processedNodes = useTreeStore.getState().processedNodes

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { getPref, savePreference } from '@/data/persistence'
 import { Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -236,7 +237,7 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
   const handleClassSelect = useCallback(
     (classIndex: number, startNodeId: string) => {
       selectClass(classIndex, startNodeId)
-      localStorage.setItem('poe-tree-selected-class', String(classIndex))
+      savePreference('selected-class', String(classIndex))
       const pn = processedNodes.get(startNodeId)
       if (pn) {
         handleCenterOn(pn.worldX, pn.worldY, 0.35)
@@ -249,8 +250,8 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
   useEffect(() => {
     if (isAtlas) return
     if (selectedClass !== null) return
-    const saved = localStorage.getItem('poe-tree-selected-class')
-    if (saved === null) return
+    const saved = getPref('selected-class', '')
+    if (!saved) return
     const classIndex = Number(saved)
     for (const [id, pn] of processedNodes) {
       if (pn.node.classStartIndex === classIndex) {
@@ -680,6 +681,7 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
             allocatedNodes={allocatedNodes}
             processedNodes={merged.processedNodes}
             selectedMasteryEffects={selectedMasteryEffects}
+            treeMode={treeMode}
             onReset={reset}
           />
         )
