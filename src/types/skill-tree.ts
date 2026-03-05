@@ -78,6 +78,7 @@ export interface SkillNode {
   isProxy?: boolean
   isMultipleChoice?: boolean
   isMultipleChoiceOption?: boolean
+  isAscendancyStart?: boolean
   isWormhole?: boolean
   classStartIndex?: number
   expansionJewel?: ExpansionJewel
@@ -156,6 +157,9 @@ export type NodeType =
   | 'jewelSocket'
   | 'classStart'
   | 'wormhole'
+  | 'ascendancyStart'
+  | 'ascendancyNormal'
+  | 'ascendancyNotable'
 
 export interface ViewportState {
   offsetX: number

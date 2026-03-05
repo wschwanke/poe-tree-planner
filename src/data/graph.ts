@@ -16,14 +16,23 @@ export function getOrbitAngle(orbitIndex: number, totalInOrbit: number): number 
   return (2 * Math.PI * orbitIndex) / totalInOrbit
 }
 
-export function getNodeType(node: {
-  isKeystone?: boolean
-  isNotable?: boolean
-  isMastery?: boolean
-  isJewelSocket?: boolean
-  isWormhole?: boolean
-  classStartIndex?: number
-}): NodeType {
+export function getNodeType(
+  node: {
+    isKeystone?: boolean
+    isNotable?: boolean
+    isMastery?: boolean
+    isJewelSocket?: boolean
+    isWormhole?: boolean
+    isAscendancyStart?: boolean
+    classStartIndex?: number
+  },
+  ascendancyName?: string,
+): NodeType {
+  if (ascendancyName) {
+    if (node.isAscendancyStart) return 'ascendancyStart'
+    if (node.isNotable) return 'ascendancyNotable'
+    return 'ascendancyNormal'
+  }
   if (node.classStartIndex !== undefined) return 'classStart'
   if (node.isKeystone) return 'keystone'
   if (node.isNotable) return 'notable'
@@ -39,8 +48,8 @@ export function buildProcessedNodes(data: SkillTreeData): Map<string, ProcessedN
   const result = new Map<string, ProcessedNode>()
 
   for (const [id, node] of Object.entries(nodes)) {
-    // Skip ascendancy and bloodline nodes
-    if (node.ascendancyName || node.isBloodline) continue
+    // Always skip bloodline nodes
+    if (node.isBloodline) continue
     // Skip proxy nodes and cluster sub-sockets (they appear only as virtual nodes when a cluster jewel is configured)
     if (node.isProxy) continue
     if (node.expansionJewel?.parent) continue
@@ -62,7 +71,7 @@ export function buildProcessedNodes(data: SkillTreeData): Map<string, ProcessedN
       node,
       worldX,
       worldY,
-      type: getNodeType(node),
+      type: getNodeType(node, node.ascendancyName),
     })
   }
 
@@ -83,9 +92,12 @@ export function buildAdjacencyGraph(
   for (const [id, pn] of processedNodes) {
     if (pn.node.isMastery) continue
     const neighbors = adj.get(id)!
+    const aAsc = !!pn.node.ascendancyName
     for (const outId of pn.node.out) {
       const outPn = processedNodes.get(outId)
       if (outPn && !outPn.node.isMastery) {
+        // Skip edges between ascendancy and non-ascendancy nodes
+        if (aAsc !== !!outPn.node.ascendancyName) continue
         neighbors.add(outId)
         let targetNeighbors = adj.get(outId)
         if (!targetNeighbors) {
@@ -98,6 +110,7 @@ export function buildAdjacencyGraph(
     for (const inId of pn.node.in) {
       const inPn = processedNodes.get(inId)
       if (inPn && !inPn.node.isMastery) {
+        if (aAsc !== !!inPn.node.ascendancyName) continue
         neighbors.add(inId)
         let targetNeighbors = adj.get(inId)
         if (!targetNeighbors) {

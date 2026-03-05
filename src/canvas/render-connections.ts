@@ -94,6 +94,12 @@ export function renderConnections(
       // Skip wormhole-to-wormhole connections (cross-map teleport links)
       if (nodeA.node.isWormhole && nodeB.node.isWormhole) continue
 
+      // Skip connections between ascendancy and non-ascendancy nodes
+      // (the link from class start to ascendancy start)
+      const aAsc = !!nodeA.node.ascendancyName
+      const bAsc = !!nodeB.node.ascendancyName
+      if (aAsc !== bAsc) continue
+
       // Cull off-screen connections
       const midX = (nodeA.worldX + nodeB.worldX) / 2
       const midY = (nodeA.worldY + nodeB.worldY) / 2
@@ -206,81 +212,84 @@ export function renderConnections(
 
   // Draw hovered path preview: show the path that would be allocated
   if (hoveredPath.length >= 2) {
-  // Build set of edges from consecutive nodes in the hovered path
-  const pathEdges = new Set<string>()
-  for (let i = 0; i < hoveredPath.length - 1; i++) {
-    const a = hoveredPath[i]
-    const b = hoveredPath[i + 1]
-    pathEdges.add(a < b ? `${a}-${b}` : `${b}-${a}`)
-  }
-
-  const previewSegments: Segment[] = []
-  for (const edgeKey of pathEdges) {
-    const [idA, idB] = edgeKey.split('-')
-    const nodeA = processedNodes.get(idA)
-    const nodeB = processedNodes.get(idB)
-    if (!nodeA || !nodeB) continue
-
-    // Check for same-orbit arc
-    if (
-      nodeA.node.group === nodeB.node.group &&
-      nodeA.node.orbit === nodeB.node.orbit &&
-      nodeA.node.orbit > 0
-    ) {
-      const group = data.groups[String(nodeA.node.group)]
-      if (group) {
-        const orbit = nodeA.node.orbit
-        const orbitRadius = data.constants.orbitRadii[orbit] ?? 0
-        const totalInOrbit = data.constants.skillsPerOrbit[orbit] ?? 1
-        const angleA = getOrbitAngle(nodeA.node.orbitIndex, totalInOrbit)
-        const angleB = getOrbitAngle(nodeB.node.orbitIndex, totalInOrbit)
-        const canvasAngleA = angleA - Math.PI / 2
-        const canvasAngleB = angleB - Math.PI / 2
-        let diff = canvasAngleB - canvasAngleA
-        while (diff > Math.PI) diff -= 2 * Math.PI
-        while (diff < -Math.PI) diff += 2 * Math.PI
-        const [gcx, gcy] = worldToScreen(group.x, group.y, viewport)
-        previewSegments.push({
-          type: 'arc',
-          cx: gcx,
-          cy: gcy,
-          radius: orbitRadius * viewport.zoom,
-          startAngle: canvasAngleA,
-          endAngle: canvasAngleB,
-          counterclockwise: diff < 0,
-        })
-        continue
-      }
+    // Build set of edges from consecutive nodes in the hovered path
+    const pathEdges = new Set<string>()
+    for (let i = 0; i < hoveredPath.length - 1; i++) {
+      const a = hoveredPath[i]
+      const b = hoveredPath[i + 1]
+      pathEdges.add(a < b ? `${a}-${b}` : `${b}-${a}`)
     }
 
-    const [sx1, sy1] = worldToScreen(nodeA.worldX, nodeA.worldY, viewport)
-    const [sx2, sy2] = worldToScreen(nodeB.worldX, nodeB.worldY, viewport)
-    previewSegments.push({ type: 'line', x1: sx1, y1: sy1, x2: sx2, y2: sy2 })
-  }
+    const previewSegments: Segment[] = []
+    for (const edgeKey of pathEdges) {
+      const [idA, idB] = edgeKey.split('-')
+      const nodeA = processedNodes.get(idA)
+      const nodeB = processedNodes.get(idB)
+      if (!nodeA || !nodeB) continue
 
-  if (previewSegments.length > 0) {
-    const activeStyle = CONNECTION_STYLES.active
-    const previewWidth = Math.max(activeStyle.minWidth, activeStyle.widthMultiplier * viewport.zoom)
-
-    ctx.save()
-    ctx.strokeStyle = activeStyle.color
-    ctx.globalAlpha = 0.33
-    ctx.lineWidth = previewWidth
-    ctx.lineCap = 'round'
-    ctx.beginPath()
-    for (const seg of previewSegments) {
-      if (seg.type === 'line') {
-        ctx.moveTo(seg.x1, seg.y1)
-        ctx.lineTo(seg.x2, seg.y2)
-      } else {
-        const { cx, cy, radius, startAngle, endAngle, counterclockwise } = seg
-        ctx.moveTo(cx + radius * Math.cos(startAngle), cy + radius * Math.sin(startAngle))
-        ctx.arc(cx, cy, radius, startAngle, endAngle, counterclockwise)
+      // Check for same-orbit arc
+      if (
+        nodeA.node.group === nodeB.node.group &&
+        nodeA.node.orbit === nodeB.node.orbit &&
+        nodeA.node.orbit > 0
+      ) {
+        const group = data.groups[String(nodeA.node.group)]
+        if (group) {
+          const orbit = nodeA.node.orbit
+          const orbitRadius = data.constants.orbitRadii[orbit] ?? 0
+          const totalInOrbit = data.constants.skillsPerOrbit[orbit] ?? 1
+          const angleA = getOrbitAngle(nodeA.node.orbitIndex, totalInOrbit)
+          const angleB = getOrbitAngle(nodeB.node.orbitIndex, totalInOrbit)
+          const canvasAngleA = angleA - Math.PI / 2
+          const canvasAngleB = angleB - Math.PI / 2
+          let diff = canvasAngleB - canvasAngleA
+          while (diff > Math.PI) diff -= 2 * Math.PI
+          while (diff < -Math.PI) diff += 2 * Math.PI
+          const [gcx, gcy] = worldToScreen(group.x, group.y, viewport)
+          previewSegments.push({
+            type: 'arc',
+            cx: gcx,
+            cy: gcy,
+            radius: orbitRadius * viewport.zoom,
+            startAngle: canvasAngleA,
+            endAngle: canvasAngleB,
+            counterclockwise: diff < 0,
+          })
+          continue
+        }
       }
+
+      const [sx1, sy1] = worldToScreen(nodeA.worldX, nodeA.worldY, viewport)
+      const [sx2, sy2] = worldToScreen(nodeB.worldX, nodeB.worldY, viewport)
+      previewSegments.push({ type: 'line', x1: sx1, y1: sy1, x2: sx2, y2: sy2 })
     }
-    ctx.stroke()
-    ctx.restore()
-  }
+
+    if (previewSegments.length > 0) {
+      const activeStyle = CONNECTION_STYLES.active
+      const previewWidth = Math.max(
+        activeStyle.minWidth,
+        activeStyle.widthMultiplier * viewport.zoom,
+      )
+
+      ctx.save()
+      ctx.strokeStyle = activeStyle.color
+      ctx.globalAlpha = 0.33
+      ctx.lineWidth = previewWidth
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      for (const seg of previewSegments) {
+        if (seg.type === 'line') {
+          ctx.moveTo(seg.x1, seg.y1)
+          ctx.lineTo(seg.x2, seg.y2)
+        } else {
+          const { cx, cy, radius, startAngle, endAngle, counterclockwise } = seg
+          ctx.moveTo(cx + radius * Math.cos(startAngle), cy + radius * Math.sin(startAngle))
+          ctx.arc(cx, cy, radius, startAngle, endAngle, counterclockwise)
+        }
+      }
+      ctx.stroke()
+      ctx.restore()
+    }
   } // end hoveredPath.length >= 2
 
   // Draw solver preview connections
@@ -343,7 +352,10 @@ export function renderConnections(
   if (solverSegments.length === 0) return
 
   const solverLineStyle = CONNECTION_STYLES.active
-  const solverWidth = Math.max(solverLineStyle.minWidth, solverLineStyle.widthMultiplier * viewport.zoom)
+  const solverWidth = Math.max(
+    solverLineStyle.minWidth,
+    solverLineStyle.widthMultiplier * viewport.zoom,
+  )
 
   // Glow pass
   ctx.save()

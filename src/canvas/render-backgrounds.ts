@@ -45,11 +45,7 @@ export function renderTreeBackground(
   const [x1, y1] = worldToScreen(cx + hw, cy + hh, viewport)
 
   ctx.globalAlpha = opacity
-  ctx.drawImage(
-    image,
-    coord.x, coord.y, coord.w, coord.h,
-    x0, y0, x1 - x0, y1 - y0,
-  )
+  ctx.drawImage(image, coord.x, coord.y, coord.w, coord.h, x0, y0, x1 - x0, y1 - y0)
   ctx.globalAlpha = 1
 }
 
@@ -90,9 +86,16 @@ export function renderGroupBackgrounds(
 
   for (const [, group] of Object.entries(groups)) {
     if (!group.background) continue
-    // Skip groups with no renderable nodes
+    // Show group if it has renderable nodes OR is a non-bloodline ascendancy group
     const hasNode = group.nodes.some((nid) => processedNodes.has(nid))
-    if (!hasNode) continue
+    if (!hasNode) {
+      if (!group.background.isHalfImage) continue
+      const isAscGroup = group.nodes.some((nid) => {
+        const raw = data.nodes[nid]
+        return raw?.ascendancyName && !raw.isBloodline
+      })
+      if (!isAscGroup) continue
+    }
 
     if (!isInView(group.x, group.y, viewport, 500)) continue
 

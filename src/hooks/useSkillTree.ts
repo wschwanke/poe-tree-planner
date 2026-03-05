@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { SpatialIndex } from '@/data/graph'
 import { buildAdjacencyGraph, buildProcessedNodes, buildSpatialIndex } from '@/data/graph'
 import { loadTreeData } from '@/data/skill-tree-loader'
@@ -14,24 +14,27 @@ export interface SkillTreeContext {
   treeMode: TreeMode
 }
 
+interface RawTreeData {
+  data: SkillTreeData
+  sprites: SpriteManager
+}
+
 export function useSkillTree(treeMode: TreeMode) {
-  const [context, setContext] = useState<SkillTreeContext | null>(null)
+  const [rawData, setRawData] = useState<RawTreeData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Phase 1: Load raw data (depends on treeMode only)
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setError(null)
-    setContext(null)
+    setRawData(null)
 
     loadTreeData(treeMode)
       .then((data) => {
         if (cancelled) return
 
-        const processedNodes = buildProcessedNodes(data)
-        const adjacency = buildAdjacencyGraph(processedNodes)
-        const spatialIndex = buildSpatialIndex(processedNodes)
         const sprites = new SpriteManager(
           data,
           treeMode === 'atlas' ? '/assets/atlas-tree/' : '/assets/',
@@ -40,7 +43,7 @@ export function useSkillTree(treeMode: TreeMode) {
         // Preload sprites at default zoom
         sprites.preloadAllCategories(0.25)
 
-        setContext({ data, processedNodes, adjacency, spatialIndex, sprites, treeMode })
+        setRawData({ data, sprites })
         setLoading(false)
       })
       .catch((err) => {
@@ -53,6 +56,18 @@ export function useSkillTree(treeMode: TreeMode) {
       cancelled = true
     }
   }, [treeMode])
+
+  // Phase 2: Build processed data (depends on rawData only)
+  const context = useMemo<SkillTreeContext | null>(() => {
+    if (!rawData) return null
+
+    const { data, sprites } = rawData
+    const processedNodes = buildProcessedNodes(data)
+    const adjacency = buildAdjacencyGraph(processedNodes)
+    const spatialIndex = buildSpatialIndex(processedNodes)
+
+    return { data, processedNodes, adjacency, spatialIndex, sprites, treeMode }
+  }, [rawData, treeMode])
 
   return { context, loading, error }
 }

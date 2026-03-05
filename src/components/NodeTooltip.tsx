@@ -22,6 +22,9 @@ const TYPE_LABELS: Record<string, string> = {
   jewelSocket: 'Jewel Socket',
   classStart: 'Class Start',
   wormhole: 'Wormhole',
+  ascendancyStart: 'Ascendancy',
+  ascendancyNormal: 'Passive',
+  ascendancyNotable: 'Notable',
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -32,6 +35,9 @@ const TYPE_COLORS: Record<string, string> = {
   jewelSocket: 'bg-cyan-700',
   classStart: 'bg-stone-500',
   wormhole: 'bg-indigo-700',
+  ascendancyStart: 'bg-purple-700',
+  ascendancyNormal: 'bg-purple-800',
+  ascendancyNotable: 'bg-purple-600',
 }
 
 export function NodeTooltip({
@@ -70,22 +76,30 @@ export function NodeTooltip({
           <div className="flex items-center gap-2">
             <CardTitle className="text-base text-stone-100">
               {node.type === 'classStart' && node.node.classStartIndex !== undefined && classes
-                ? classes[node.node.classStartIndex]?.name ?? node.node.name ?? 'Unknown'
-                : node.node.name ?? 'Unknown'}
+                ? (classes[node.node.classStartIndex]?.name ?? node.node.name ?? 'Unknown')
+                : (node.node.name ?? 'Unknown')}
             </CardTitle>
             <Badge className={`text-xs px-2 py-0.5 ${TYPE_COLORS[node.type] ?? ''}`}>
               {TYPE_LABELS[node.type] ?? node.type}
             </Badge>
           </div>
+          {node.node.ascendancyName && (
+            <span className="text-xs text-purple-400">{node.node.ascendancyName}</span>
+          )}
           {allocated && <span className="text-xs text-amber-400">Allocated</span>}
           {allocated && clusterJewels?.has(node.id) && (
             <span className="text-xs text-teal-400">
-              {clusterJewels.get(node.id)!.size.charAt(0).toUpperCase() + clusterJewels.get(node.id)!.size.slice(1)} Cluster Jewel ({clusterJewels.get(node.id)!.passiveCount} passives)
+              {clusterJewels.get(node.id)!.size.charAt(0).toUpperCase() +
+                clusterJewels.get(node.id)!.size.slice(1)}{' '}
+              Cluster Jewel ({clusterJewels.get(node.id)!.passiveCount} passives)
             </span>
           )}
-          {allocated && node.node.isJewelSocket && node.node.expansionJewel && !clusterJewels?.has(node.id) && (
-            <span className="text-xs text-stone-500">Click to configure cluster jewel</span>
-          )}
+          {allocated &&
+            node.node.isJewelSocket &&
+            node.node.expansionJewel &&
+            !clusterJewels?.has(node.id) && (
+              <span className="text-xs text-stone-500">Click to configure cluster jewel</span>
+            )}
         </CardHeader>
         {hasDescription && (
           <>

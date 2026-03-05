@@ -1,8 +1,8 @@
 import { create } from 'zustand'
-import { type PathResult, findShortestPath, getConnectedComponent } from '@/data/graph'
+import { findShortestPath, getConnectedComponent, type PathResult } from '@/data/graph'
 import { getPref, savePreference } from '@/data/persistence'
 import { useClusterStore } from '@/state/cluster-store'
-import type { ProcessedNode, TreeMode } from '@/types/skill-tree'
+import type { CharacterClass, ProcessedNode, TreeMode } from '@/types/skill-tree'
 
 const SCION_CLASS_INDEX = 0
 const SCION_BASE_POINTS = 127
@@ -27,6 +27,28 @@ function computeTotalPoints(
   return getBasePoints(classIndex) + (banditChoice === 'kill_all' ? 1 : 0)
 }
 
+const TOTAL_ASCENDANCY_POINTS = 8
+
+function computePoints(
+  allocatedNodes: Set<string>,
+  classStartNodeId: string | null,
+  ascendancyStartNodeId: string | null,
+  processedNodes: Map<string, ProcessedNode> | null,
+): { pointsUsed: number; ascendancyPointsUsed: number } {
+  let mainCount = 0
+  let ascCount = 0
+  for (const nodeId of allocatedNodes) {
+    if (nodeId === classStartNodeId || nodeId === ascendancyStartNodeId) continue
+    const pn = processedNodes?.get(nodeId)
+    if (pn?.node.ascendancyName) {
+      ascCount++
+    } else {
+      mainCount++
+    }
+  }
+  return { pointsUsed: mainCount, ascendancyPointsUsed: ascCount }
+}
+
 const MAX_UNDO_HISTORY = 100
 
 interface UndoSnapshot {
@@ -45,6 +67,13 @@ interface TreeState {
   masteryDialogNodeId: string | null
   banditChoice: BanditChoice
 
+  // Ascendancy state
+  selectedAscendancy: string | null
+  selectedAscendancyClassId: number
+  ascendancyStartNodeId: string | null
+  ascendancyPointsUsed: number
+  totalAscendancyPoints: number
+
   // Undo history
   undoStack: UndoSnapshot[]
   canUndo: boolean
@@ -52,6 +81,7 @@ interface TreeState {
   // Context refs (set once after data loads)
   processedNodes: Map<string, ProcessedNode> | null
   adjacency: Map<string, Set<string>> | null
+  classesData: CharacterClass[]
   totalPoints: number
 
   // Derived state
@@ -63,8 +93,11 @@ interface TreeState {
   setContext: (
     processedNodes: Map<string, ProcessedNode>,
     adjacency: Map<string, Set<string>>,
+    classesData?: CharacterClass[],
   ) => void
   selectClass: (classIndex: number, startNodeId: string) => void
+  selectAscendancy: (name: string, classId: number) => void
+  clearAscendancy: () => void
   setBanditChoice: (choice: BanditChoice) => void
   initAtlas: () => void
   handleNodeClick: (nodeId: string) => void
@@ -81,6 +114,7 @@ interface TreeState {
     masteryEffects: Record<string, number>
     banditChoice: BanditChoice
     treeMode?: TreeMode
+    ascendClassId?: number
   }) => void
   undo: () => void
   reset: () => void
@@ -136,7 +170,10 @@ function computeHoveredPath(
     let bestResult: PathResult | null = null
     for (const notableId of groupNotables) {
       const result = findShortestPath(notableId, notableId, adjacency, allocatedNodes)
-      if (result && (!bestResult || result.nodesToAllocate.length < bestResult.nodesToAllocate.length))
+      if (
+        result &&
+        (!bestResult || result.nodesToAllocate.length < bestResult.nodesToAllocate.length)
+      )
         bestResult = result
     }
     return bestResult?.fullPath ?? []
@@ -166,7 +203,14 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   hoveredNodeId: null,
   selectedMasteryEffects: new Map<string, number>(),
   masteryDialogNodeId: null,
-  banditChoice: (getPref('bandit-choice', 'none') as BanditChoice),
+  banditChoice: getPref('bandit-choice', 'none') as BanditChoice,
+
+  // Ascendancy state
+  selectedAscendancy: null,
+  selectedAscendancyClassId: 0,
+  ascendancyStartNodeId: null,
+  ascendancyPointsUsed: 0,
+  totalAscendancyPoints: TOTAL_ASCENDANCY_POINTS,
 
   // Undo history
   undoStack: [],
@@ -175,11 +219,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   // Context refs
   processedNodes: null,
   adjacency: null,
-  totalPoints: computeTotalPoints(
-    null,
-    (getPref('bandit-choice', 'none') as BanditChoice),
-    'skill',
-  ),
+  classesData: [],
+  totalPoints: computeTotalPoints(null, getPref('bandit-choice', 'none') as BanditChoice, 'skill'),
 
   // Derived state
   canAllocateNodes: new Set<string>(),
@@ -187,8 +228,10 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   hoveredPath: [],
 
   // Actions
-  setContext(processedNodes, adjacency) {
-    set({ processedNodes, adjacency })
+  setContext(processedNodes, adjacency, classesData) {
+    const updates: Partial<TreeState> = { processedNodes, adjacency }
+    if (classesData) updates.classesData = classesData
+    set(updates)
   },
 
   selectClass(classIndex, startNodeId) {
@@ -207,6 +250,58 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       pointsUsed: 0,
       hoveredPath: [],
       totalPoints: computeTotalPoints(classIndex, banditChoice, 'skill'),
+      // Clear ascendancy when class changes
+      selectedAscendancy: null,
+      selectedAscendancyClassId: 0,
+      ascendancyStartNodeId: null,
+      ascendancyPointsUsed: 0,
+    })
+  },
+
+  selectAscendancy(name, classId) {
+    const state = get()
+    const { allocatedNodes, processedNodes, classStartNodeId, adjacency } = state
+    // Remove any previously allocated ascendancy nodes
+    const newAllocated = new Set<string>()
+    for (const nodeId of allocatedNodes) {
+      const pn = processedNodes?.get(nodeId)
+      if (!pn?.node.ascendancyName) {
+        newAllocated.add(nodeId)
+      }
+    }
+    const canAllocateNodes = computeCanAllocateNodes(newAllocated, adjacency)
+    const pts = computePoints(newAllocated, classStartNodeId, null, processedNodes)
+    set({
+      selectedAscendancy: name,
+      selectedAscendancyClassId: classId,
+      ascendancyStartNodeId: null,
+      ascendancyPointsUsed: 0,
+      allocatedNodes: newAllocated,
+      canAllocateNodes,
+      pointsUsed: pts.pointsUsed,
+    })
+  },
+
+  clearAscendancy() {
+    const state = get()
+    const { allocatedNodes, processedNodes, classStartNodeId, adjacency } = state
+    const newAllocated = new Set<string>()
+    for (const nodeId of allocatedNodes) {
+      const pn = processedNodes?.get(nodeId)
+      if (!pn?.node.ascendancyName) {
+        newAllocated.add(nodeId)
+      }
+    }
+    const canAllocateNodes = computeCanAllocateNodes(newAllocated, adjacency)
+    const pts = computePoints(newAllocated, classStartNodeId, null, processedNodes)
+    set({
+      selectedAscendancy: null,
+      selectedAscendancyClassId: 0,
+      ascendancyStartNodeId: null,
+      ascendancyPointsUsed: 0,
+      allocatedNodes: newAllocated,
+      canAllocateNodes,
+      pointsUsed: pts.pointsUsed,
     })
   },
 
@@ -242,7 +337,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
   handleNodeClick(nodeId) {
     const state = get()
-    const { adjacency, processedNodes, allocatedNodes, classStartNodeId } = state
+    const { adjacency, processedNodes, allocatedNodes, classStartNodeId, ascendancyStartNodeId } =
+      state
     if (!adjacency || !processedNodes) return
 
     const pn = processedNodes.get(nodeId)
@@ -250,6 +346,9 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
     // Proxy nodes are always blocked
     if (pn.node.isProxy) return
+
+    // Block clicks on ascendancy nodes that don't belong to the selected ascendancy
+    if (pn.node.ascendancyName && pn.node.ascendancyName !== state.selectedAscendancy) return
 
     // Mastery nodes: auto-path to group notable if needed, then open selection dialog
     if (pn.node.isMastery) {
@@ -289,7 +388,12 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         const undoStack = pushUndo(state)
         const newAllocated = new Set(allocatedNodes)
         for (const id of bestResult.nodesToAllocate) newAllocated.add(id)
-        const newPointsUsed = newAllocated.size - (classStartNodeId ? 1 : 0)
+        const pts = computePoints(
+          newAllocated,
+          classStartNodeId,
+          ascendancyStartNodeId,
+          processedNodes,
+        )
         const canAllocateNodes = computeCanAllocateNodes(newAllocated, adjacency)
         set({
           undoStack,
@@ -297,7 +401,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           allocatedNodes: newAllocated,
           masteryDialogNodeId: nodeId,
           canAllocateNodes,
-          pointsUsed: newPointsUsed,
+          pointsUsed: pts.pointsUsed,
+          ascendancyPointsUsed: pts.ascendancyPointsUsed,
           hoveredPath: computeHoveredPath(
             state.hoveredNodeId,
             newAllocated,
@@ -314,8 +419,9 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     }
 
     if (allocatedNodes.has(nodeId)) {
-      // Unallocate
+      // Unallocate — protect class start and ascendancy start
       if (nodeId === classStartNodeId) return
+      if (nodeId === ascendancyStartNodeId) return
 
       const undoStack = pushUndo(state)
       const newAllocated = new Set(allocatedNodes)
@@ -324,6 +430,12 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       let connected = newAllocated
       if (classStartNodeId) {
         connected = getConnectedComponent(classStartNodeId, adjacency, newAllocated)
+        // Ascendancy is a separate component — include it too
+        if (ascendancyStartNodeId && newAllocated.has(ascendancyStartNodeId)) {
+          for (const id of getConnectedComponent(ascendancyStartNodeId, adjacency, newAllocated)) {
+            connected.add(id)
+          }
+        }
       }
 
       // Auto-remove masteries whose group has no remaining allocated notables
@@ -353,7 +465,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         connected.add(masteryId)
       }
 
-      const newPointsUsed = connected.size - (classStartNodeId ? 1 : 0)
+      const pts = computePoints(connected, classStartNodeId, ascendancyStartNodeId, processedNodes)
       const canAllocateNodes = computeCanAllocateNodes(connected, adjacency)
       set({
         undoStack,
@@ -361,7 +473,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         allocatedNodes: connected,
         selectedMasteryEffects: newMasteryEffects,
         canAllocateNodes,
-        pointsUsed: newPointsUsed,
+        pointsUsed: pts.pointsUsed,
+        ascendancyPointsUsed: pts.ascendancyPointsUsed,
         hoveredPath: computeHoveredPath(
           state.hoveredNodeId,
           connected,
@@ -371,20 +484,31 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         ),
       })
     } else {
+      // Check point pool before allocating
+      const isAscNode = !!pn.node.ascendancyName
+      if (isAscNode && state.ascendancyPointsUsed >= state.totalAscendancyPoints) return
+      if (!isAscNode && state.pointsUsed >= state.totalPoints) return
+
       const canAllocateNodes = computeCanAllocateNodes(allocatedNodes, adjacency)
       if (canAllocateNodes.has(nodeId)) {
         // Direct neighbor
         const undoStack = pushUndo(state)
         const newAllocated = new Set(allocatedNodes)
         newAllocated.add(nodeId)
-        const newPointsUsed = newAllocated.size - (classStartNodeId ? 1 : 0)
+        const pts = computePoints(
+          newAllocated,
+          classStartNodeId,
+          ascendancyStartNodeId,
+          processedNodes,
+        )
         const newCanAllocate = computeCanAllocateNodes(newAllocated, adjacency)
         set({
           undoStack,
           canUndo: true,
           allocatedNodes: newAllocated,
           canAllocateNodes: newCanAllocate,
-          pointsUsed: newPointsUsed,
+          pointsUsed: pts.pointsUsed,
+          ascendancyPointsUsed: pts.ascendancyPointsUsed,
           hoveredPath: computeHoveredPath(
             state.hoveredNodeId,
             newAllocated,
@@ -400,14 +524,20 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           const undoStack = pushUndo(state)
           const newAllocated = new Set(allocatedNodes)
           for (const id of result.nodesToAllocate) newAllocated.add(id)
-          const newPointsUsed = newAllocated.size - (classStartNodeId ? 1 : 0)
+          const pts = computePoints(
+            newAllocated,
+            classStartNodeId,
+            ascendancyStartNodeId,
+            processedNodes,
+          )
           const newCanAllocate = computeCanAllocateNodes(newAllocated, adjacency)
           set({
             undoStack,
             canUndo: true,
             allocatedNodes: newAllocated,
             canAllocateNodes: newCanAllocate,
-            pointsUsed: newPointsUsed,
+            pointsUsed: pts.pointsUsed,
+            ascendancyPointsUsed: pts.ascendancyPointsUsed,
             hoveredPath: computeHoveredPath(
               state.hoveredNodeId,
               newAllocated,
@@ -424,19 +554,21 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   applyNodes(nodeIds) {
     const state = get()
     const undoStack = pushUndo(state)
-    const { allocatedNodes, adjacency, processedNodes, classStartNodeId } = state
+    const { allocatedNodes, adjacency, processedNodes, classStartNodeId, ascendancyStartNodeId } =
+      state
     const newAllocated = new Set(allocatedNodes)
     for (const id of nodeIds) {
       newAllocated.add(id)
     }
-    const newPointsUsed = newAllocated.size - (classStartNodeId ? 1 : 0)
+    const pts = computePoints(newAllocated, classStartNodeId, ascendancyStartNodeId, processedNodes)
     const canAllocateNodes = computeCanAllocateNodes(newAllocated, adjacency)
     set({
       undoStack,
       canUndo: true,
       allocatedNodes: newAllocated,
       canAllocateNodes,
-      pointsUsed: newPointsUsed,
+      pointsUsed: pts.pointsUsed,
+      ascendancyPointsUsed: pts.ascendancyPointsUsed,
       hoveredPath: computeHoveredPath(
         state.hoveredNodeId,
         newAllocated,
@@ -450,7 +582,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   deallocateNodes(nodeIds) {
     const state = get()
     const undoStack = pushUndo(state)
-    const { allocatedNodes, adjacency, processedNodes, classStartNodeId } = state
+    const { allocatedNodes, adjacency, processedNodes, classStartNodeId, ascendancyStartNodeId } =
+      state
     const newAllocated = new Set(allocatedNodes)
     for (const id of nodeIds) {
       newAllocated.delete(id)
@@ -459,15 +592,21 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     let connected = newAllocated
     if (classStartNodeId && adjacency) {
       connected = getConnectedComponent(classStartNodeId, adjacency, newAllocated)
+      if (ascendancyStartNodeId && newAllocated.has(ascendancyStartNodeId)) {
+        for (const id of getConnectedComponent(ascendancyStartNodeId, adjacency, newAllocated)) {
+          connected.add(id)
+        }
+      }
     }
-    const newPointsUsed = connected.size - (classStartNodeId ? 1 : 0)
+    const pts = computePoints(connected, classStartNodeId, ascendancyStartNodeId, processedNodes)
     const canAllocateNodes = computeCanAllocateNodes(connected, adjacency)
     set({
       undoStack,
       canUndo: true,
       allocatedNodes: connected,
       canAllocateNodes,
-      pointsUsed: newPointsUsed,
+      pointsUsed: pts.pointsUsed,
+      ascendancyPointsUsed: pts.ascendancyPointsUsed,
       hoveredPath: computeHoveredPath(
         state.hoveredNodeId,
         connected,
@@ -499,21 +638,32 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
   handleMasterySelect(nodeId, effectIndex) {
     const state = get()
-    const { allocatedNodes, classStartNodeId, adjacency } = state
+    const { allocatedNodes, classStartNodeId, ascendancyStartNodeId, adjacency, processedNodes } =
+      state
 
     const undoStack = pushUndo(state)
     if (state.selectedMasteryEffects.has(nodeId)) {
       // Already allocated - change effect (no additional point cost)
       const newEffects = new Map(state.selectedMasteryEffects)
       newEffects.set(nodeId, effectIndex)
-      set({ undoStack, canUndo: true, selectedMasteryEffects: newEffects, masteryDialogNodeId: null })
+      set({
+        undoStack,
+        canUndo: true,
+        selectedMasteryEffects: newEffects,
+        masteryDialogNodeId: null,
+      })
     } else {
       // New allocation - costs 1 point
       const newAllocated = new Set(allocatedNodes)
       newAllocated.add(nodeId)
       const newEffects = new Map(state.selectedMasteryEffects)
       newEffects.set(nodeId, effectIndex)
-      const newPointsUsed = newAllocated.size - (classStartNodeId ? 1 : 0)
+      const pts = computePoints(
+        newAllocated,
+        classStartNodeId,
+        ascendancyStartNodeId,
+        processedNodes,
+      )
       const canAllocateNodes = computeCanAllocateNodes(newAllocated, adjacency)
       set({
         undoStack,
@@ -522,12 +672,13 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         selectedMasteryEffects: newEffects,
         masteryDialogNodeId: null,
         canAllocateNodes,
-        pointsUsed: newPointsUsed,
+        pointsUsed: pts.pointsUsed,
+        ascendancyPointsUsed: pts.ascendancyPointsUsed,
         hoveredPath: computeHoveredPath(
           state.hoveredNodeId,
           newAllocated,
           adjacency,
-          state.processedNodes,
+          processedNodes,
           canAllocateNodes,
         ),
       })
@@ -537,12 +688,13 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   handleMasteryUnallocate(nodeId) {
     const state = get()
     const undoStack = pushUndo(state)
-    const { allocatedNodes, classStartNodeId, adjacency, processedNodes } = state
+    const { allocatedNodes, classStartNodeId, ascendancyStartNodeId, adjacency, processedNodes } =
+      state
     const newAllocated = new Set(allocatedNodes)
     newAllocated.delete(nodeId)
     const newEffects = new Map(state.selectedMasteryEffects)
     newEffects.delete(nodeId)
-    const newPointsUsed = newAllocated.size - (classStartNodeId ? 1 : 0)
+    const pts = computePoints(newAllocated, classStartNodeId, ascendancyStartNodeId, processedNodes)
     const canAllocateNodes = computeCanAllocateNodes(newAllocated, adjacency)
     set({
       undoStack,
@@ -551,7 +703,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       selectedMasteryEffects: newEffects,
       masteryDialogNodeId: null,
       canAllocateNodes,
-      pointsUsed: newPointsUsed,
+      pointsUsed: pts.pointsUsed,
+      ascendancyPointsUsed: pts.ascendancyPointsUsed,
       hoveredPath: computeHoveredPath(
         state.hoveredNodeId,
         newAllocated,
@@ -563,7 +716,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   },
 
   loadSnapshot(snapshot) {
-    const { adjacency } = get()
+    const { adjacency, processedNodes, classesData } = get()
     const mode = snapshot.treeMode ?? 'skill'
     const allocatedNodes = new Set<string>(snapshot.allocatedNodeIds)
     const masteryEffects = new Map(Object.entries(snapshot.masteryEffects).map(([k, v]) => [k, v]))
@@ -572,6 +725,33 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       savePreference('selected-class', String(snapshot.classId))
       savePreference('bandit-choice', snapshot.banditChoice)
     }
+
+    // Resolve ascendancy name from ascendClassId using classes data
+    const ascendClassId = snapshot.ascendClassId ?? 0
+    let ascendancyName: string | null = null
+    if (ascendClassId > 0 && classesData.length > 0) {
+      const cls = classesData[snapshot.classId]
+      if (cls?.ascendancies?.[ascendClassId - 1]) {
+        ascendancyName = cls.ascendancies[ascendClassId - 1].id
+      }
+    }
+
+    // Find ascendancy start node if any ascendancy nodes are allocated
+    let ascStartNodeId: string | null = null
+    for (const nodeId of allocatedNodes) {
+      const pn = processedNodes?.get(nodeId)
+      if (pn?.node.isAscendancyStart) {
+        ascStartNodeId = nodeId
+        break
+      }
+    }
+
+    const pts = computePoints(
+      allocatedNodes,
+      snapshot.classStartNodeId,
+      ascStartNodeId,
+      processedNodes,
+    )
     set({
       selectedClass: snapshot.classId,
       classStartNodeId: snapshot.classStartNodeId,
@@ -580,7 +760,11 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       banditChoice: snapshot.banditChoice,
       totalPoints: computeTotalPoints(snapshot.classId, snapshot.banditChoice, mode),
       canAllocateNodes,
-      pointsUsed: allocatedNodes.size - 1,
+      pointsUsed: pts.pointsUsed,
+      ascendancyPointsUsed: pts.ascendancyPointsUsed,
+      ascendancyStartNodeId: ascStartNodeId,
+      selectedAscendancyClassId: ascendClassId,
+      selectedAscendancy: ascendancyName,
       hoveredNodeId: null,
       masteryDialogNodeId: null,
       hoveredPath: [],
@@ -589,20 +773,26 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
   undo() {
     const state = get()
-    const { undoStack, adjacency, classStartNodeId } = state
+    const { undoStack, adjacency, classStartNodeId, ascendancyStartNodeId, processedNodes } = state
     if (undoStack.length === 0) return
 
     const newStack = [...undoStack]
     const snapshot = newStack.pop()!
     const canAllocateNodes = computeCanAllocateNodes(snapshot.allocatedNodes, adjacency)
-    const pointsUsed = snapshot.allocatedNodes.size - (classStartNodeId ? 1 : 0)
+    const pts = computePoints(
+      snapshot.allocatedNodes,
+      classStartNodeId,
+      ascendancyStartNodeId,
+      processedNodes,
+    )
     set({
       undoStack: newStack,
       canUndo: newStack.length > 0,
       allocatedNodes: snapshot.allocatedNodes,
       selectedMasteryEffects: snapshot.selectedMasteryEffects,
       canAllocateNodes,
-      pointsUsed,
+      pointsUsed: pts.pointsUsed,
+      ascendancyPointsUsed: pts.ascendancyPointsUsed,
       hoveredNodeId: null,
       masteryDialogNodeId: null,
       hoveredPath: [],
@@ -610,7 +800,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   },
 
   reset() {
-    const { treeMode, adjacency } = get()
+    const { treeMode, adjacency, ascendancyStartNodeId } = get()
     useClusterStore.getState().reset()
 
     if (treeMode === 'atlas') {
@@ -625,6 +815,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         masteryDialogNodeId: null,
         canAllocateNodes,
         pointsUsed: 0,
+        ascendancyPointsUsed: 0,
         hoveredPath: [],
       })
       return
@@ -632,7 +823,10 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
     const { classStartNodeId } = get()
     if (classStartNodeId) {
-      const allocatedNodes = new Set<string>([classStartNodeId])
+      // If there's an ascendancy start, auto-allocate it along with class start
+      const startNodes = [classStartNodeId]
+      if (ascendancyStartNodeId) startNodes.push(ascendancyStartNodeId)
+      const allocatedNodes = new Set<string>(startNodes)
       const canAllocateNodes = computeCanAllocateNodes(allocatedNodes, adjacency)
       set({
         undoStack: [],
@@ -643,6 +837,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         masteryDialogNodeId: null,
         canAllocateNodes,
         pointsUsed: 0,
+        ascendancyPointsUsed: 0,
         hoveredPath: [],
       })
     } else {
@@ -657,7 +852,11 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         masteryDialogNodeId: null,
         canAllocateNodes: new Set(),
         pointsUsed: 0,
+        ascendancyPointsUsed: 0,
         hoveredPath: [],
+        selectedAscendancy: null,
+        selectedAscendancyClassId: 0,
+        ascendancyStartNodeId: null,
       })
     }
   },

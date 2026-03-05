@@ -28,18 +28,34 @@ const FRAME_MAP: Record<string, { unallocated: string; canAllocate: string; allo
     canAllocate: 'WormholeFrameHighlight',
     allocated: 'WormholeFrameAllocated',
   },
+  ascendancyNormal: {
+    unallocated: 'AscendancyFrameSmallNormal',
+    canAllocate: 'AscendancyFrameSmallCanAllocate',
+    allocated: 'AscendancyFrameSmallAllocated',
+  },
+  ascendancyNotable: {
+    unallocated: 'AscendancyFrameLargeNormal',
+    canAllocate: 'AscendancyFrameLargeCanAllocate',
+    allocated: 'AscendancyFrameLargeAllocated',
+  },
 }
+
+// Ascendancy frame sprites live in the 'ascendancy' sprite category, not 'frame'
+const ASCENDANCY_FRAME_TYPES = new Set(['ascendancyNormal', 'ascendancyNotable'])
 
 function getIconCategory(type: NodeType, allocated: boolean): string {
   switch (type) {
     case 'keystone':
       return allocated ? 'keystoneActive' : 'keystoneInactive'
     case 'notable':
+    case 'ascendancyNotable':
       return allocated ? 'notableActive' : 'notableInactive'
     case 'mastery':
       return allocated ? 'masteryConnected' : 'mastery'
     case 'wormhole':
       return allocated ? 'wormholeActive' : 'wormholeInactive'
+    case 'ascendancyNormal':
+      return allocated ? 'normalActive' : 'normalInactive'
     default:
       return allocated ? 'normalActive' : 'normalInactive'
   }
@@ -100,6 +116,29 @@ export function renderNodes(
     }
   }
 
+  // Draw ascendancy start decorations
+  const ascStartNodes: [string, ProcessedNode][] = []
+  for (const [id, pn] of processedNodes) {
+    if (pn.type !== 'ascendancyStart') continue
+    if (!isInView(pn.worldX, pn.worldY, viewport, 200)) continue
+    ascStartNodes.push([id, pn])
+
+    const [sx, sy] = worldToScreen(pn.worldX, pn.worldY, viewport)
+    // Draw the ascendancy middle ring
+    sprites.drawSprite(ctx, 'ascendancy', 'AscendancyMiddle', sx, sy, viewport.zoom)
+    // Draw class portrait on top
+    if (pn.node.ascendancyName) {
+      sprites.drawSprite(
+        ctx,
+        'ascendancy',
+        `Classes${pn.node.ascendancyName}`,
+        sx,
+        sy,
+        viewport.zoom,
+      )
+    }
+  }
+
   // Collect nodes by render priority (normal < notable < keystone)
   const normalNodes: [string, ProcessedNode][] = []
   const notableNodes: [string, ProcessedNode][] = []
@@ -109,6 +148,7 @@ export function renderNodes(
   for (const entry of processedNodes) {
     const [, pn] = entry
     if (pn.type === 'classStart') continue
+    if (pn.type === 'ascendancyStart') continue
     if (pn.node.isProxy) continue
     if (!isInView(pn.worldX, pn.worldY, viewport, 100)) continue
 
@@ -118,10 +158,14 @@ export function renderNodes(
         break
       case 'notable':
       case 'wormhole':
+      case 'ascendancyNotable':
         notableNodes.push(entry)
         break
       case 'mastery':
         masteryNodes.push(entry)
+        break
+      case 'ascendancyNormal':
+        normalNodes.push(entry)
         break
       default:
         normalNodes.push(entry)
@@ -218,11 +262,7 @@ export function renderNodes(
         ctx.save()
         ctx.beginPath()
         ctx.arc(sx, sy, fillRadius, 0, Math.PI * 2)
-        ctx.fillStyle = isAllocated
-          ? '#c8b074'
-          : isCanAllocate
-            ? '#6b5c3e'
-            : '#2a2520'
+        ctx.fillStyle = isAllocated ? '#c8b074' : isCanAllocate ? '#6b5c3e' : '#2a2520'
         ctx.fill()
         ctx.restore()
       }
@@ -236,9 +276,9 @@ export function renderNodes(
         : isCanAllocate
           ? frameInfo.canAllocate
           : frameInfo.unallocated
-      sprites.drawSprite(ctx, 'frame', frameKey, sx, sy, viewport.zoom)
+      const frameCategory = ASCENDANCY_FRAME_TYPES.has(pn.type) ? 'ascendancy' : 'frame'
+      sprites.drawSprite(ctx, frameCategory, frameKey, sx, sy, viewport.zoom)
     }
-
 
     // Hover preview: draw the allocated appearance at 33% opacity
     if ((isHovered || hoveredPathSet.has(id)) && !isAllocated) {
@@ -265,7 +305,8 @@ export function renderNodes(
         }
         const activeFrame = FRAME_MAP[pn.type]
         if (activeFrame) {
-          sprites.drawSprite(ctx, 'frame', activeFrame.allocated, sx, sy, viewport.zoom)
+          const frameCategory = ASCENDANCY_FRAME_TYPES.has(pn.type) ? 'ascendancy' : 'frame'
+          sprites.drawSprite(ctx, frameCategory, activeFrame.allocated, sx, sy, viewport.zoom)
         }
       }
       ctx.restore()
@@ -275,9 +316,10 @@ export function renderNodes(
   // Mastery sibling pulse — highlight other masteries of the same type when hovering one
   if (hoveredNodeId) {
     const hoveredPn = processedNodes.get(hoveredNodeId)
-    const hoveredMasteryIcon = hoveredPn?.type === 'mastery'
-      ? (hoveredPn.node.inactiveIcon ?? hoveredPn.node.icon)
-      : undefined
+    const hoveredMasteryIcon =
+      hoveredPn?.type === 'mastery'
+        ? (hoveredPn.node.inactiveIcon ?? hoveredPn.node.icon)
+        : undefined
     if (hoveredPn?.type === 'mastery' && hoveredMasteryIcon) {
       const pulsePhase = (Math.sin(animationTime * 0.004) + 1) / 2
       const pulseAlpha = 0.3 + pulsePhase * 0.7
@@ -348,6 +390,7 @@ export function getNodeRadius(type: NodeType): number {
     case 'keystone':
       return 68
     case 'notable':
+    case 'ascendancyNotable':
       return 48
     case 'mastery':
       return 48
@@ -357,6 +400,10 @@ export function getNodeRadius(type: NodeType): number {
       return 40
     case 'classStart':
       return 80
+    case 'ascendancyStart':
+      return 60
+    case 'ascendancyNormal':
+      return 34
     default:
       return 34
   }

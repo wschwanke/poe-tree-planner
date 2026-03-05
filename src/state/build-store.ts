@@ -1,9 +1,9 @@
 import { create } from 'zustand'
-import type { Build, BuildStep, ExportedBuild } from '@/types/build'
-import type { TreeMode } from '@/types/skill-tree'
-import { ATLAS_START_NODE, useTreeStore } from '@/state/tree-store'
 import { decodeBuild, encodeBuild } from '@/data/build-codec'
 import { loadBuilds as fetchBuilds, saveBuilds } from '@/data/persistence'
+import { ATLAS_START_NODE, useTreeStore } from '@/state/tree-store'
+import type { Build, BuildStep, ExportedBuild } from '@/types/build'
+import type { TreeMode } from '@/types/skill-tree'
 
 const STORAGE_KEY = 'poe-tree-builds'
 
@@ -144,6 +144,7 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
     }
 
     const step = createStep('Step 1', classId, allocatedNodeIds, masteryEffects)
+    step.ascendClassId = isAtlas ? 0 : tree.selectedAscendancyClassId
     const build: Build = {
       id: generateId(),
       name,
@@ -220,6 +221,7 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
         masteryEffects: step.masteryEffects,
         banditChoice: build.banditChoice,
         treeMode: build.treeMode,
+        ascendClassId: step.ascendClassId,
       })
       _suppressAutoSave = false
     }
@@ -258,6 +260,7 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
       masteryEffects: step.masteryEffects,
       banditChoice: build.banditChoice,
       treeMode: build.treeMode,
+      ascendClassId: step.ascendClassId,
     })
     _suppressAutoSave = false
 
@@ -341,15 +344,14 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
       }
     }
     const classId = isAtlas ? 0 : (tree.selectedClass ?? 0)
+    const ascendClassId = isAtlas ? 0 : tree.selectedAscendancyClassId
 
     const builds = updateBuild(get().builds, buildId, (b) => ({
       ...b,
       classId,
       banditChoice: isAtlas ? 'none' : tree.banditChoice,
       steps: b.steps.map((s) =>
-        s.id === stepId
-          ? { ...s, classId, allocatedNodeIds, masteryEffects }
-          : s,
+        s.id === stepId ? { ...s, classId, ascendClassId, allocatedNodeIds, masteryEffects } : s,
       ),
       updatedAt: Date.now(),
     }))
@@ -379,6 +381,7 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
       masteryEffects: step.masteryEffects,
       banditChoice: build.banditChoice,
       treeMode: build.treeMode,
+      ascendClassId: step.ascendClassId,
     })
     _suppressAutoSave = false
   },
@@ -431,7 +434,11 @@ export const useBuildStore = create<BuildStore>((set, get) => ({
 // Auto-save tree changes to the active step
 useTreeStore.subscribe((state, prev) => {
   if (_suppressAutoSave) return
-  if (state.allocatedNodes === prev.allocatedNodes && state.selectedMasteryEffects === prev.selectedMasteryEffects) return
+  if (
+    state.allocatedNodes === prev.allocatedNodes &&
+    state.selectedMasteryEffects === prev.selectedMasteryEffects
+  )
+    return
   const { activeBuildId, activeStepId } = useBuildStore.getState()
   if (activeBuildId && activeStepId) {
     useBuildStore.getState().saveCurrentToStep(activeBuildId, activeStepId)

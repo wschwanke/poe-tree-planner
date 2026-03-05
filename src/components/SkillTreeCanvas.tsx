@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { getPref, savePreference } from '@/data/persistence'
 import { Undo2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { render } from '@/canvas/renderer'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -9,26 +9,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { render } from '@/canvas/renderer'
+import { buildMergedData, generateClusterNodes, isClusterSocket } from '@/data/cluster-jewels'
+import { getPref, savePreference } from '@/data/persistence'
 import { solveSteinerTree } from '@/data/solver'
 import { type NodeClickEvent, useCanvasInteraction } from '@/hooks/useCanvasInteraction'
 import { useSearch } from '@/hooks/useSearch'
 import type { SkillTreeContext } from '@/hooks/useSkillTree'
 import { useViewport } from '@/hooks/useViewport'
-import { buildMergedData, generateClusterNodes, isClusterSocket } from '@/data/cluster-jewels'
+import { useClusterStore } from '@/state/cluster-store'
 import type { PlanningFlag } from '@/state/planning-store'
 import { usePlanningStore } from '@/state/planning-store'
-import { useClusterStore } from '@/state/cluster-store'
 import { useSearchStore } from '@/state/search-store'
 import { useTreeStore } from '@/state/tree-store'
 import { EXPANSION_SIZE_MAP } from '@/types/cluster-jewel'
 import type { TreeMode } from '@/types/skill-tree'
 import { BuildManager } from './BuildManager'
 import { BuildToolbar } from './BuildToolbar'
-import { ClassSelector } from './ClassSelectionDialog'
+import { AscendancySelector, ClassSelector } from './ClassSelectionDialog'
 import { ClusterJewelDialog } from './ClusterJewelDialog'
-import { HelpMenu } from './HelpMenu'
 import { CommandPalette } from './CommandPalette'
+import { HelpMenu } from './HelpMenu'
 import { MasterySelectionDialog } from './MasterySelectionDialog'
 import { NodeTooltip } from './NodeTooltip'
 import { PlanningInfoPanel } from './PlanningInfoPanel'
@@ -100,8 +100,8 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
 
   // Initialize store context with merged data
   useEffect(() => {
-    useTreeStore.getState().setContext(merged.processedNodes, merged.adjacency)
-  }, [merged.processedNodes, merged.adjacency])
+    useTreeStore.getState().setContext(merged.processedNodes, merged.adjacency, data.classes)
+  }, [merged.processedNodes, merged.adjacency, data.classes])
 
   // Initialize atlas mode when context loads
   useEffect(() => {
@@ -120,7 +120,13 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
   const totalPoints = useTreeStore((s) => s.totalPoints)
   const hoveredPath = useTreeStore((s) => s.hoveredPath)
 
+  const selectedAscendancy = useTreeStore((s) => s.selectedAscendancy)
+  const ascendancyPointsUsed = useTreeStore((s) => s.ascendancyPointsUsed)
+  const totalAscendancyPoints = useTreeStore((s) => s.totalAscendancyPoints)
+
   const selectClass = useTreeStore((s) => s.selectClass)
+  const selectAscendancy = useTreeStore((s) => s.selectAscendancy)
+  const clearAscendancy = useTreeStore((s) => s.clearAscendancy)
   const handleNodeClick = useTreeStore((s) => s.handleNodeClick)
   const setHovered = useTreeStore((s) => s.setHovered)
   const reset = useTreeStore((s) => s.reset)
@@ -161,7 +167,11 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
 
           // For unallocated cluster sockets, allocate then open dialog
           const pn = merged.processedNodes.get(event.nodeId)
-          if (pn?.node.isJewelSocket && isClusterSocket(pn.node) && canAllocateNodes.has(event.nodeId)) {
+          if (
+            pn?.node.isJewelSocket &&
+            isClusterSocket(pn.node) &&
+            canAllocateNodes.has(event.nodeId)
+          ) {
             handleNodeClick(event.nodeId)
             openClusterDialog(event.nodeId)
             return
@@ -171,7 +181,16 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
         handleNodeClick(event.nodeId)
       }
     },
-    [planningActive, toggleFlag, handleNodeClick, allocatedNodes, canAllocateNodes, merged.processedNodes, openClusterDialog, isAtlas],
+    [
+      planningActive,
+      toggleFlag,
+      handleNodeClick,
+      allocatedNodes,
+      canAllocateNodes,
+      merged.processedNodes,
+      openClusterDialog,
+      isAtlas,
+    ],
   )
 
   // Clean up cluster configs when their sockets are unallocated (skill tree only)
@@ -244,6 +263,45 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
       }
     },
     [selectClass, processedNodes, handleCenterOn],
+  )
+
+  // Auto-allocate ascendancy start node when ascendancy changes
+  useEffect(() => {
+    if (isAtlas || !selectedAscendancy) return
+    // Find the ascendancy start node in the processed nodes
+    for (const [id, pn] of merged.processedNodes) {
+      if (pn.node.ascendancyName === selectedAscendancy && pn.node.isAscendancyStart) {
+        const store = useTreeStore.getState()
+        if (store.ascendancyStartNodeId !== id) {
+          // Auto-allocate the ascendancy start node (free, like class start)
+          const newAllocated = new Set(store.allocatedNodes)
+          newAllocated.add(id)
+          store.setContext(merged.processedNodes, merged.adjacency)
+          useTreeStore.setState({
+            ascendancyStartNodeId: id,
+            allocatedNodes: newAllocated,
+          })
+          // Recompute canAllocate with the new allocated set
+          const canAllocate = new Set<string>()
+          for (const nodeId of newAllocated) {
+            const neighbors = merged.adjacency.get(nodeId)
+            if (!neighbors) continue
+            for (const neighbor of neighbors) {
+              if (!newAllocated.has(neighbor)) canAllocate.add(neighbor)
+            }
+          }
+          useTreeStore.setState({ canAllocateNodes: canAllocate })
+        }
+        break
+      }
+    }
+  }, [isAtlas, selectedAscendancy, merged.processedNodes, merged.adjacency])
+
+  const handleAscendancySelect = useCallback(
+    (name: string, classId: number) => {
+      selectAscendancy(name, classId)
+    },
+    [selectAscendancy],
   )
 
   // Restore class selection from localStorage on mount (skill tree only)
@@ -495,7 +553,14 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
       setClusterJewel(clusterDialogSocketId, config)
       closeClusterDialog()
     },
-    [clusterDialogSocketId, clusterJewels, allocatedNodes, setClusterJewel, closeClusterDialog, deallocateNodes],
+    [
+      clusterDialogSocketId,
+      clusterJewels,
+      allocatedNodes,
+      setClusterJewel,
+      closeClusterDialog,
+      deallocateNodes,
+    ],
   )
 
   const handleClusterRemove = useCallback(() => {
@@ -511,7 +576,13 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
     }
     removeClusterJewel(clusterDialogSocketId)
     closeClusterDialog()
-  }, [clusterDialogSocketId, allocatedNodes, deallocateNodes, removeClusterJewel, closeClusterDialog])
+  }, [
+    clusterDialogSocketId,
+    allocatedNodes,
+    deallocateNodes,
+    removeClusterJewel,
+    closeClusterDialog,
+  ])
 
   const handleClusterUnallocate = useCallback(() => {
     if (!clusterDialogSocketId) return
@@ -532,7 +603,15 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
     // Unallocate the socket node itself
     handleNodeClick(clusterDialogSocketId)
     closeClusterDialog()
-  }, [clusterDialogSocketId, allocatedNodes, deallocateNodes, clusterJewels, removeClusterJewel, handleNodeClick, closeClusterDialog])
+  }, [
+    clusterDialogSocketId,
+    allocatedNodes,
+    deallocateNodes,
+    clusterJewels,
+    removeClusterJewel,
+    handleNodeClick,
+    closeClusterDialog,
+  ])
 
   return (
     <div className="relative w-full h-full overflow-hidden">
@@ -573,7 +652,23 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
             onSelect={handleClassSelect}
           />
         )}
-        {(isAtlas || selectedClass !== null) && <PointCounter used={pointsUsed} total={totalPoints} />}
+        {!isAtlas && selectedClass !== null && (
+          <AscendancySelector
+            data={data}
+            selectedClass={selectedClass}
+            selectedAscendancy={selectedAscendancy}
+            onSelect={handleAscendancySelect}
+            onClear={clearAscendancy}
+          />
+        )}
+        {(isAtlas || selectedClass !== null) && (
+          <PointCounter
+            used={pointsUsed}
+            total={totalPoints}
+            ascUsed={selectedAscendancy ? ascendancyPointsUsed : undefined}
+            ascTotal={selectedAscendancy ? totalAscendancyPoints : undefined}
+          />
+        )}
         {(isAtlas || selectedClass !== null) && (
           <>
             <div className="w-px h-5 bg-stone-700/60" />
@@ -613,7 +708,9 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
       </div>
 
       {/* Top bar right: settings, help — offset when side panel is visible */}
-      <div className={`absolute top-3 z-40 flex items-center gap-2 ${isAtlas || selectedClass !== null ? 'right-[21.5rem]' : 'right-3'}`}>
+      <div
+        className={`absolute top-3 z-40 flex items-center gap-2 ${isAtlas || selectedClass !== null ? 'right-[21.5rem]' : 'right-3'}`}
+      >
         <SettingsDialog />
         <HelpMenu />
       </div>
@@ -670,12 +767,9 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
       )}
 
       {/* Right side panel: planning or stats */}
-      {(isAtlas || selectedClass !== null) && (
-        planningActive ? (
-          <PlanningInfoPanel
-            adjacency={merged.adjacency}
-            processedNodes={merged.processedNodes}
-          />
+      {(isAtlas || selectedClass !== null) &&
+        (planningActive ? (
+          <PlanningInfoPanel adjacency={merged.adjacency} processedNodes={merged.processedNodes} />
         ) : (
           <StatSummaryPanel
             allocatedNodes={allocatedNodes}
@@ -684,8 +778,7 @@ export function SkillTreeCanvas({ context, treeMode, onTreeModeChange }: SkillTr
             treeMode={treeMode}
             onReset={reset}
           />
-        )
-      )}
+        ))}
 
       {/* Build management */}
       <BuildManager treeMode={treeMode} />
