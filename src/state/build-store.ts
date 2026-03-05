@@ -439,9 +439,12 @@ useTreeStore.subscribe((state, prev) => {
     state.selectedMasteryEffects === prev.selectedMasteryEffects
   )
     return
-  const { activeBuildId, activeStepId } = useBuildStore.getState()
+  const { activeBuildId, activeStepId, builds } = useBuildStore.getState()
   if (activeBuildId && activeStepId) {
-    useBuildStore.getState().saveCurrentToStep(activeBuildId, activeStepId)
+    const build = builds.find((b) => b.id === activeBuildId)
+    if (build && build.treeMode === state.treeMode) {
+      useBuildStore.getState().saveCurrentToStep(activeBuildId, activeStepId)
+    }
   }
 })
 

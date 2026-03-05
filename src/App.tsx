@@ -17,6 +17,7 @@ function App() {
   }, [])
 
   const handleTreeModeChange = (mode: TreeMode) => {
+    useBuildStore.getState().setActiveBuild(null)
     savePreference('tree-mode', mode)
     setTreeMode(mode)
   }
